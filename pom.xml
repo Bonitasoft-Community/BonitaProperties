@@ -1,0 +1,52 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.bonitasoft.ext.BonitaProperties</groupId>
+  <artifactId>BonitaProperties</artifactId>
+  <version>1.0.0</version>
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <bonita.version>7.3.1</bonita.version>
+    </properties>
+  
+    <dependencies>
+      
+        <dependency>
+            <groupId>org.bonitasoft.engine</groupId>
+            <artifactId>bonita-client</artifactId>
+            <version>${bonita.version}</version>
+        </dependency>
+        
+        <dependency>
+             <groupId>org.bonitasoft.web</groupId> 
+            <artifactId>bonita-web-extensions</artifactId> 
+            <version>${bonita.version}</version>
+        </dependency>
+                
+             <dependency>
+             <groupId>org.bonitasoft.web</groupId> 
+            <artifactId>bonita-web-extensions</artifactId> 
+            <version>${bonita.version}</version>
+        </dependency>
+                
+           <dependency>
+            <groupId>com.bonitasoft.log.event</groupId>
+            <artifactId>bonita-event</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+        
+  </dependencies>
+  
+  <build>
+    <sourceDirectory>src</sourceDirectory>
+    <plugins>
+      <plugin>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.1</version>
+        <configuration>
+          <source>1.7</source>
+          <target>1.7</target>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
