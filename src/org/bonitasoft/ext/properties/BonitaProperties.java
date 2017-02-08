@@ -295,7 +295,7 @@ public class BonitaProperties extends Properties {
 
     /**
      * check the database to verify that the database is accessible and the table too
-     * 
+     *
      * @return
      */
     public List<BEvent> checkDatabase()
@@ -368,7 +368,7 @@ public class BonitaProperties extends Properties {
                 pstmt.setString(3, key.toString());
 
                 pstmt.setString(4, record.get(key) == null ? null : record.get(key).toString());
-                pstmt.executeUpdate(sqlRequest);
+                pstmt.executeUpdate();
 
             }
             pstmt.close();
