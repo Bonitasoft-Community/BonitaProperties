@@ -25,9 +25,9 @@ import org.bonitasoft.log.event.BEvent.Level;
 import org.bonitasoft.log.event.BEventFactory;
 import org.bonitasoft.web.extension.page.PageResourceProvider;
 
+
 @SuppressWarnings("serial")
 public class BonitaProperties extends Properties {
-
 
     private static Logger logger = Logger.getLogger("org.bonitasoft.ext.properties");
 
@@ -59,15 +59,17 @@ public class BonitaProperties extends Properties {
      */
     private Hashtable<String, Hashtable<String, String>> mAllProperties;
 
+    private String sqlDataSourceName = "java:/comp/env/bonitaSequenceManagerDS";
 
     // java:/comp/env/bonitaSequenceManagerDS
-    private final static String cstSqlDataSourceName = "java:/comp/env/bonitaSequenceManagerDS";
 
     private final static String cstSqlTableName = "bonitaproperties";
     private final static String cstSqlResourceName = "resourcename";
     private final static String cstSqldomainName = "domainname";
     private final static String cstSqlPropertiesKey = "propkey";
     private final static String cstSqlPropertiesValue = "propvalue";
+
+    private boolean checkDatabaseAtFirstAccess = true;
 
     /**
      * when you want to access the BonitaProperties from a Page, you have a PageResourceProvider.
@@ -87,77 +89,104 @@ public class BonitaProperties extends Properties {
     public List<BEvent> load()
     {
         return loaddomainName(null);
- }
+    }
+
     /**
      * load all the properties informations
      */
     public List<BEvent> loaddomainName(final String domainName)
     {
         mDomainName = domainName;
-        Statement stmt = null;
-        final List<BEvent> listEvents = new ArrayList<BEvent>();
+        Connection con = null;
+
+        PreparedStatement pstmt = null;
+        final List<BEvent> listEvents = new ArrayList();
         try
         {
-            logger.info("Connect to [" + cstSqlDataSourceName + "]");
+            logger.info("Connect to [" + sqlDataSourceName + "] loaddomainename[" + domainName + "]");
             final Context ctx = new InitialContext();
-            final DataSource dataSource = (DataSource) ctx.lookup(cstSqlDataSourceName);
-            Connection con = dataSource.getConnection();
-
+            final DataSource dataSource = (DataSource) ctx.lookup(sqlDataSourceName);
+            con = dataSource.getConnection();
+            if (checkDatabaseAtFirstAccess) {
             listEvents.addAll(checkCreateDatase(con));
-            if (BEventFactory.isError(listEvents))
-            {
+            }
+            checkDatabaseAtFirstAccess = false;
+            if (BEventFactory.isError(listEvents)) {
                 return listEvents;
             }
-            String sqlRequest = "select * from " + cstSqlTableName + " where 1=1 ";
+            String sqlRequest = "select * from bonitaproperties where 1=1 ";
 
+            final List<Object> listSqlParameters = new ArrayList();
             if (mName != null)
             {
-                sqlRequest += " and " + cstSqlResourceName + "= '" + mName + "'";
+                sqlRequest = sqlRequest + " and resourcename= ?";
+                listSqlParameters.add(mName);
             }
             if (domainName != null)
             {
-                sqlRequest += " and " + cstSqldomainName + "= '" + mDomainName + "'";
+                sqlRequest = sqlRequest + " and domainname= ?";
+                listSqlParameters.add(mDomainName);
             }
+            logger.info("sqlRequest[" + sqlRequest + "]");
 
-            stmt = con.createStatement();
-            final ResultSet rs = stmt.executeQuery(sqlRequest);
+            pstmt = con.prepareStatement(sqlRequest);
+            for (int i = 0; i < listSqlParameters.size(); i++) {
+                pstmt.setObject(i + 1, listSqlParameters.get(i));
+            }
+            int count = 0;
+            final ResultSet rs = pstmt.executeQuery();
             while (rs.next())
             {
+                count++;
                 final String resourceName = rs.getString(cstSqlResourceName);
                 final String key = rs.getString(cstSqlPropertiesKey);
                 final String value = rs.getString(cstSqlPropertiesValue);
                 // if there is a name ? Load the properties, else load the administration properties
-                if (mName != null) {
+                if (mName != null)
+            {
                     setProperty(key, value);
-                } else
-                {
+            }
+                else
+            {
                     Hashtable<String, String> onePropertie = mAllProperties.get(resourceName);
                     if (onePropertie == null) {
                         onePropertie = new Hashtable<String, String>();
                     }
                     onePropertie.put(key, value);
                     mAllProperties.put(resourceName, onePropertie);
-                }
-
             }
-            stmt.close();
+            }
+            logger.info(" load from mName[" + mName + "] mDomainName[" + mDomainName + "] found[" + count + "]records");
+
+            pstmt.close();
+            pstmt = null;
+            con.close();
             con = null;
             if (mName != null) {
                 logger.info("Load  Properties[" + mName + "] :  " + size() + " properties");
             } else {
                 logger.info("Load  AllProperties :  " + mAllProperties.size() + " properties");
             }
-
         } catch (final Exception e)
         {
             final StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
             logger.severe("Error during load properties [" + mName + "] : " + e.toString() + " : " + exceptionDetails);
-            if (stmt != null) {
-                try {
-                    stmt.close();
-                } catch (final SQLException e1) {
+            if (pstmt != null) {
+                try
+            {
+                    pstmt.close();
+            }
+ catch (final SQLException localSQLException) {
+                }
+            }
+            if (con != null) {
+                try
+            {
+                    con.close();
+            }
+ catch (final SQLException localSQLException1) {
                 }
             }
             listEvents.add(new BEvent(EventErrorAtLoad, e, "properties name;[" + mName + "]"));
@@ -175,13 +204,14 @@ public class BonitaProperties extends Properties {
         final List<BEvent> listEvents = new ArrayList<BEvent>();
 
         Statement stmt = null;
+        String sqlRequest = null;
         try
         {
             final Context ctx = new InitialContext();
-            final DataSource dataSource = (DataSource) ctx.lookup(cstSqlDataSourceName);
+            final DataSource dataSource = (DataSource) ctx.lookup(sqlDataSourceName);
             Connection con = dataSource.getConnection();
 
-            String sqlRequest = "delete from " + cstSqlTableName + " where 1=1 ";
+            sqlRequest = "delete from " + cstSqlTableName + " where 1=1 ";
             if (mName != null) {
                 sqlRequest += " and " + cstSqlResourceName + "= '" + mName + "'";
             }
@@ -193,21 +223,36 @@ public class BonitaProperties extends Properties {
             logger.info("Purge all with [" + sqlRequest + "]");
             stmt.executeUpdate(sqlRequest);
 
+            stmt.close();
+            stmt = null;
+
             // now create all records
+            Exception exceptionDuringRecord = null;
             if (mName != null)
             {
-                insertSql(con, mName, mDomainName, this);
+                exceptionDuringRecord = insertSql(con, mName, mDomainName, this);
+
             }
             else
             {
 
                 for (final String resourceName : mAllProperties.keySet())
                 {
-                    insertSql(con, resourceName, mDomainName, mAllProperties.get(resourceName));
+                    exceptionDuringRecord = insertSql(con, resourceName, mDomainName, mAllProperties.get(resourceName));
+                    if (exceptionDuringRecord != null)
+                    {
+                        break;
+                    }
                 }
             }
-            con.commit();
-            stmt.close();
+            if (exceptionDuringRecord != null)
+            {
+                listEvents.add(new BEvent(EventErrorAtStore, exceptionDuringRecord, "properties name;[" + mName + "]"));
+                con.rollback();
+            } else {
+                con.commit();
+            }
+
             stmt = null;
             con = null;
         } catch (final Exception e)
@@ -215,7 +260,7 @@ public class BonitaProperties extends Properties {
             final StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
-            logger.severe("Error during load properties [" + mName + "] : " + e.toString() + " : " + exceptionDetails);
+            logger.severe("Error during store properties [" + mName + "] sqlRequest[" + sqlRequest + "] : " + e.toString() + " : " + exceptionDetails);
             if (stmt != null) {
                 try {
                     stmt.close();
@@ -224,6 +269,61 @@ public class BonitaProperties extends Properties {
             }
             listEvents.add(new BEvent(EventErrorAtStore, e, "properties name;[" + mName + "]"));
 
+        }
+        return listEvents;
+    }
+
+    public void setDataSource(final String dataSource)
+    {
+        sqlDataSourceName = dataSource;
+    }
+
+    public String getDataSource()
+    {
+        return sqlDataSourceName;
+    }
+
+    public boolean getCheckDatabase()
+    {
+        return checkDatabaseAtFirstAccess;
+    }
+
+    public void setCheckDatabase(final boolean checkDatabaseAtFirstAccess)
+    {
+        this.checkDatabaseAtFirstAccess = checkDatabaseAtFirstAccess;
+    }
+
+    /**
+     * check the database to verify that the database is accessible and the table too
+     * 
+     * @return
+     */
+    public List<BEvent> checkDatabase()
+    {
+        final List<BEvent> listEvents = new ArrayList();
+        Connection con = null;
+        try
+        {
+            final Context ctx = new InitialContext();
+
+            final DataSource dataSource = (DataSource) ctx.lookup(sqlDataSourceName);
+            con = dataSource.getConnection();
+
+            listEvents.addAll(checkCreateDatase(con));
+        } catch (final Exception e)
+        {
+            final StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            final String exceptionDetails = sw.toString();
+            logger.severe("Error during checkCreateDatase [" + exceptionDetails + "]");
+            if (con != null) {
+                try
+                {
+                    con.close();
+                } catch (final SQLException localSQLException) {
+                }
+            }
+            listEvents.add(new BEvent(EventErrorAtStore, e, "properties name;[" + mName + "]"));
         }
         return listEvents;
     }
@@ -237,11 +337,12 @@ public class BonitaProperties extends Properties {
      * @param value
      * @throws SQLException
      */
-    private void insertSql(final Connection con, final String resourceName, final String domainName, final Hashtable record /*
-                                                                                                                             * , final String key, final String
-                                                                                                                             * value
-                                                                                                                             */)
-            throws SQLException
+    private Exception insertSql(final Connection con, final String resourceName, final String domainName, final Hashtable record /*
+                                                                                                                                  * , final String key, final
+                                                                                                                                  * String
+                                                                                                                                  * value
+                                                                                                                                  */)
+
     {
         /*
          * final String sqlRequest = "insert into " + sqlTableName + " (" +
@@ -251,15 +352,40 @@ public class BonitaProperties extends Properties {
         final String sqlRequest = "insert into " + cstSqlTableName + " (" +
                 cstSqlResourceName + "," + cstSqldomainName + "," + cstSqlPropertiesKey + "," + cstSqlPropertiesValue
                 + ") VALUES( ?,?,?,?)";
+        String whatToLog = "prepareStatement";
+        PreparedStatement pstmt = null;
+        try
+        {
+            pstmt = con.prepareStatement(sqlRequest);
+            for (final Object key : record.keySet()) {
+                whatToLog = "values [" + cstSqlResourceName + ":" + resourceName + "] "
+                        + "," + cstSqldomainName + ":" + domainName
+                        + "," + cstSqlPropertiesKey + ":" + key.toString()
+                        + "," + cstSqlPropertiesValue + ":" + record.get(key) + "]";
 
-        final PreparedStatement pstmt = con.prepareStatement(sqlRequest);
-        for (final Object key : record.keySet()) {
-            pstmt.setString(1, resourceName);
-            pstmt.setString(2, domainName);
-            pstmt.setString(3, key.toString());
-            pstmt.setString(4, record.get(key) == null ? null : record.get(key).toString());
-            pstmt.executeUpdate(sqlRequest);
+                pstmt.setString(1, resourceName);
+                pstmt.setString(2, domainName);
+                pstmt.setString(3, key.toString());
+
+                pstmt.setString(4, record.get(key) == null ? null : record.get(key).toString());
+                pstmt.executeUpdate(sqlRequest);
+
+            }
+            pstmt.close();
+        } catch (final SQLException e) {
+            final StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            final String exceptionDetails = sw.toString();
+            logger.info("insertSql[" + whatToLog + "] at " + exceptionDetails);
+            if (pstmt != null) {
+                try {
+                    pstmt.close();
+                } catch (final Exception e2) {
+                }
+            };
+            return e;
         }
+        return null;
     }
 
     /**
@@ -290,13 +416,13 @@ public class BonitaProperties extends Properties {
                 }
             }
             if (exist) {
-                final Map<String,Integer> listColsExpected= new HashMap<String,Integer>();
-                listColsExpected.put( cstSqlResourceName.toLowerCase(), 200 );
-                listColsExpected.put( cstSqldomainName.toLowerCase(), 500 );
-                listColsExpected.put( cstSqlPropertiesKey.toLowerCase(), 200 );
-                listColsExpected.put( cstSqlPropertiesValue.toLowerCase(), 10000 );
+                final Map<String, Integer> listColsExpected = new HashMap<String, Integer>();
+                listColsExpected.put(cstSqlResourceName.toLowerCase(), 200);
+                listColsExpected.put(cstSqldomainName.toLowerCase(), 500);
+                listColsExpected.put(cstSqlPropertiesKey.toLowerCase(), 200);
+                listColsExpected.put(cstSqlPropertiesValue.toLowerCase(), 10000);
 
-                final Map<String,Integer> alterCols= new HashMap<String,Integer>();
+                final Map<String, Integer> alterCols = new HashMap<String, Integer>();
 
                 // Table exists : is the fields are correct ?
                 final ResultSet rs = dbm.getColumns(null /* catalog */, null /* schema */, null /* cstSqlTableName */, null /* columnNamePattern */);
@@ -313,27 +439,27 @@ public class BonitaProperties extends Properties {
                         continue;
                     }
                     // final int dataType = rs.getInt("DATA_TYPE");
-                    final Integer expectedSize = listColsExpected.containsKey(   colName.toLowerCase() )? listColsExpected.get(colName.toLowerCase()) : null;
-                    if (expectedSize==null)
-                     {
+                    final Integer expectedSize = listColsExpected.containsKey(colName.toLowerCase()) ? listColsExpected.get(colName.toLowerCase()) : null;
+                    if (expectedSize == null)
+                    {
                         logger.info("Colum  [" + colName.toLowerCase() + "] : does not exist in [ " + listColsExpected + "];");
                         continue; // this columns is new
                     }
-                    if ( length < expectedSize) {
+                    if (length < expectedSize) {
                         logger.info("Colum  [" + colName.toLowerCase() + "] : length[" + length + "] expected[" + expectedSize + "]");
-                        alterCols.put(colName.toLowerCase(), expectedSize );
+                        alterCols.put(colName.toLowerCase(), expectedSize);
                     }
                     listColsExpected.remove(colName.toLowerCase());
                     // logger.info("Remove Colum  [" + colName.toLowerCase() + "] : list is now [ " + listColsExpected + "];");
                 }
                 // OK, create all missing column
-                for (final String col : listColsExpected.keySet() )
+                for (final String col : listColsExpected.keySet())
                 {
-                    executeAlterSql( con, "alter table "+ cstSqlTableName+" add  "+ getSqlField(col, listColsExpected.get( col ), databaseProductName)  );
+                    executeAlterSql(con, "alter table " + cstSqlTableName + " add  " + getSqlField(col, listColsExpected.get(col), databaseProductName));
                 }
                 // all change operation
-                for (final String col : alterCols.keySet() )
-                    {
+                for (final String col : alterCols.keySet())
+                {
                     executeAlterSql(con, "alter table " + cstSqlTableName + " alter column " + getSqlField(col, alterCols.get(col), databaseProductName));
                 }
                 logger.info("CheckCreateTable [" + cstSqlTableName + "] : Correct ");
@@ -347,7 +473,7 @@ public class BonitaProperties extends Properties {
                         + getSqlField(cstSqldomainName, 500, databaseProductName) + ", "
                         + getSqlField(cstSqlPropertiesKey, 200, databaseProductName) + ", "
                         + getSqlField(cstSqlPropertiesValue, 10000, databaseProductName) + ")";
-                executeAlterSql( con, createTableString );
+                executeAlterSql(con, createTableString);
 
             }
         } catch (final SQLException e) {
@@ -372,6 +498,7 @@ public class BonitaProperties extends Properties {
         stmt.close();
 
     }
+
     /**
      * calculate the field according different database
      *
