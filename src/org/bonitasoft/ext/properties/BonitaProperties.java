@@ -25,7 +25,6 @@ import org.bonitasoft.log.event.BEvent.Level;
 import org.bonitasoft.log.event.BEventFactory;
 import org.bonitasoft.web.extension.page.PageResourceProvider;
 
-
 @SuppressWarnings("serial")
 public class BonitaProperties extends Properties {
 
@@ -54,10 +53,29 @@ public class BonitaProperties extends Properties {
      */
     private String mDomainName = null;
 
+    private boolean mLoadAllDomains = false;
+
     /*
      * in case of an administration usage, all properties has to be load
+     * Structure : key is NAME
+     * Value is Key/value
+     * or
+     * Value is Domain / Key/Value
+     * Example :
+     * .. "MyGoldApplication" : {
+     * ...... "State":"California",
+     * ...... "year":"1849",
+     * ...... "Francis" : {
+     * .......... "age":"43",
+     * .........."country":"France"
+     * ......}
+     * ...... "Elvis" : {
+     * .........."age":"25",
+     * .........."country":"USA"
+     * ......}
+     * }
      */
-    private Hashtable<String, Hashtable<String, String>> mAllProperties;
+    private Hashtable<String, Hashtable<String, Object>> mAllProperties;
 
     private String sqlDataSourceName = "java:/comp/env/bonitaSequenceManagerDS";
 
@@ -86,6 +104,13 @@ public class BonitaProperties extends Properties {
         mName = name;
     }
 
+    public static BonitaProperties getAdminInstance()
+    {
+        final BonitaProperties bonitaProperties = new BonitaProperties((String) null);
+        bonitaProperties.mLoadAllDomains = true;
+        return bonitaProperties;
+    }
+
     public List<BEvent> load()
     {
         return loaddomainName(null);
@@ -96,19 +121,20 @@ public class BonitaProperties extends Properties {
      */
     public List<BEvent> loaddomainName(final String domainName)
     {
+        // logger.info("BonitaProperties.loadDomainName [" + domainName + "] CheckDatabase[" + checkDatabaseAtFirstAccess + "]");
         mDomainName = domainName;
         Connection con = null;
-
+        final boolean originCheckDatabaseAtFirstAccess = checkDatabaseAtFirstAccess;
         PreparedStatement pstmt = null;
         final List<BEvent> listEvents = new ArrayList();
         try
         {
-            logger.info("Connect to [" + sqlDataSourceName + "] loaddomainename[" + domainName + "]");
+            //logger.info("Connect to [" + sqlDataSourceName + "] loaddomainename[" + domainName + "]");
             final Context ctx = new InitialContext();
             final DataSource dataSource = (DataSource) ctx.lookup(sqlDataSourceName);
             con = dataSource.getConnection();
             if (checkDatabaseAtFirstAccess) {
-            listEvents.addAll(checkCreateDatase(con));
+                listEvents.addAll(checkCreateDatase(con));
             }
             checkDatabaseAtFirstAccess = false;
             if (BEventFactory.isError(listEvents)) {
@@ -122,12 +148,20 @@ public class BonitaProperties extends Properties {
                 sqlRequest = sqlRequest + " and resourcename= ?";
                 listSqlParameters.add(mName);
             }
-            if (domainName != null)
+            if (!mLoadAllDomains)
             {
-                sqlRequest = sqlRequest + " and domainname= ?";
-                listSqlParameters.add(mDomainName);
+                if (mDomainName == null)
+                {
+                    // protect the domain information
+                    sqlRequest = sqlRequest + " and domainname is null";
+                }
+                else
+                {
+                    sqlRequest = sqlRequest + " and domainname= ?";
+                    listSqlParameters.add(mDomainName);
+                }
             }
-            logger.info("sqlRequest[" + sqlRequest + "]");
+            //logger.info("sqlRequest[" + sqlRequest + "]");
 
             pstmt = con.prepareStatement(sqlRequest);
             for (int i = 0; i < listSqlParameters.size(); i++) {
@@ -138,55 +172,74 @@ public class BonitaProperties extends Properties {
             while (rs.next())
             {
                 count++;
-                final String resourceName = rs.getString(cstSqlResourceName);
-                final String key = rs.getString(cstSqlPropertiesKey);
-                final String value = rs.getString(cstSqlPropertiesValue);
+                final String rsResourceName = rs.getString(cstSqlResourceName);
+                final String rsDomainName = rs.getString(cstSqldomainName);
+                final String rsKey = rs.getString(cstSqlPropertiesKey);
+                final String rsValue = rs.getString(cstSqlPropertiesValue);
                 // if there is a name ? Load the properties, else load the administration properties
                 if (mName != null)
-            {
-                    setProperty(key, value);
-            }
+                {
+                    setProperty(rsKey, rsValue);
+                }
                 else
-            {
-                    Hashtable<String, String> onePropertie = mAllProperties.get(resourceName);
-                    if (onePropertie == null) {
-                        onePropertie = new Hashtable<String, String>();
+                {
+                    if (mAllProperties == null) {
+                        mAllProperties = new Hashtable<String, Hashtable<String, Object>>();
                     }
-                    onePropertie.put(key, value);
-                    mAllProperties.put(resourceName, onePropertie);
+                    Hashtable<String, Object> mapName = mAllProperties.get(rsResourceName);
+                    if (mapName == null) {
+                        mapName = new Hashtable<String, Object>();
+                        mAllProperties.put(rsResourceName, mapName);
+                    }
+                    if (rsDomainName != null)
+                    {
+                        Hashtable<String, String> mapDomain = (Hashtable<String, String>) mapName.get(rsDomainName);
+                        if (mapDomain == null) {
+                            mapDomain = new Hashtable<String, String>();
+                            mapName.put(rsDomainName, mapDomain);
+                        }
+                        mapDomain.put(rsKey, rsValue);
+                    } else {
+                        mapName.put(rsKey, rsValue);
+                    }
+                }
             }
-            }
-            logger.info(" load from mName[" + mName + "] mDomainName[" + mDomainName + "] found[" + count + "]records");
+
+            logger.info("Bonitaproperties.loadDomainName Loadfrom  [" + mDomainName
+                    + "] CheckDatabase[" + originCheckDatabaseAtFirstAccess
+                    + "] name[" + mName
+                    + "] " + (mName != null ? "*LoadProperties*" : "*LoadALLPROPERTIES*")
+                    + " found[" + count + "]records sqlRequest[" + sqlRequest + "]");
 
             pstmt.close();
             pstmt = null;
             con.close();
             con = null;
-            if (mName != null) {
-                logger.info("Load  Properties[" + mName + "] :  " + size() + " properties");
-            } else {
-                logger.info("Load  AllProperties :  " + mAllProperties.size() + " properties");
-            }
+            /*
+             * if (mName != null) {
+             * logger.info("Load  Properties[" + mName + "] :  " + size() + " properties");
+             * } else {
+             * logger.info("Load  AllProperties :  " + mAllProperties.size() + " properties");
+             * }
+             */
         } catch (final Exception e)
         {
             final StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
-            logger.severe("Error during load properties [" + mName + "] : " + e.toString() + " : " + exceptionDetails);
+            logger.severe("Bonitaproperties.loadDomainName Error during load properties [" + mName + "] : " + e.toString() + " : " + exceptionDetails);
             if (pstmt != null) {
                 try
-            {
+                {
                     pstmt.close();
-            }
- catch (final SQLException localSQLException) {
+                } catch (final SQLException localSQLException) {
                 }
             }
             if (con != null) {
                 try
-            {
+                {
                     con.close();
-            }
- catch (final SQLException localSQLException1) {
+                } catch (final SQLException localSQLException1) {
                 }
             }
             listEvents.add(new BEvent(EventErrorAtLoad, e, "properties name;[" + mName + "]"));
@@ -215,7 +268,12 @@ public class BonitaProperties extends Properties {
             if (mName != null) {
                 sqlRequest += " and " + cstSqlResourceName + "= '" + mName + "'";
             }
-            if (mDomainName != null) {
+            if (mDomainName == null) {
+                // protect the domain
+                sqlRequest += " and " + cstSqldomainName + " is null";
+            }
+            else
+            {
                 sqlRequest += " and " + cstSqldomainName + "= '" + mDomainName + "'";
             }
             stmt = con.createStatement();
@@ -291,6 +349,17 @@ public class BonitaProperties extends Properties {
     public void setCheckDatabase(final boolean checkDatabaseAtFirstAccess)
     {
         this.checkDatabaseAtFirstAccess = checkDatabaseAtFirstAccess;
+    }
+
+    /**
+     * return all the properties. This is for administration, when the load is done without any domain.
+     *
+     * @return first level is the Resource name, second is all values in this resource.
+     *         In case of domain, the value is a Map
+     */
+    public Hashtable<String, Hashtable<String, Object>> getAllProperties()
+    {
+        return mAllProperties;
     }
 
     /**
@@ -396,6 +465,7 @@ public class BonitaProperties extends Properties {
      */
     private List<BEvent> checkCreateDatase(final Connection con)
     {
+
         final List<BEvent> listEvents = new ArrayList<BEvent>();
 
         try {
@@ -462,11 +532,11 @@ public class BonitaProperties extends Properties {
                 {
                     executeAlterSql(con, "alter table " + cstSqlTableName + " alter column " + getSqlField(col, alterCols.get(col), databaseProductName));
                 }
-                logger.info("CheckCreateTable [" + cstSqlTableName + "] : Correct ");
+                logger.info("BonitaProperties.CheckCreateTable [" + cstSqlTableName + "] : Correct ");
             }
             else
             {
-                logger.info("CheckCreateTable [" + cstSqlTableName + "] : NOT EXIST : create it");
+                logger.info("BonitaProperties.CheckCreateTable [" + cstSqlTableName + "] : NOT EXIST : create it");
                 // create the table
                 final String createTableString = "create table " + cstSqlTableName + " ("
                         + getSqlField(cstSqlResourceName, 200, databaseProductName) + ", "
@@ -480,7 +550,7 @@ public class BonitaProperties extends Properties {
             final StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
-            logger.severe("Error during load properties [" + mName + "] : " + e.toString() + " : " + exceptionDetails);
+            logger.severe("BonitaProperties.CheckCreateTableError during load properties [" + mName + "] : " + e.toString() + " : " + exceptionDetails);
             listEvents.add(new BEvent(EventCreationDatabase, e, "properties name;[" + mName + "]"));
 
         }
@@ -489,7 +559,7 @@ public class BonitaProperties extends Properties {
 
     private void executeAlterSql(final Connection con, final String sqlRequest) throws SQLException
     {
-        logger.info("executeAlterSql : Execute [" + sqlRequest + "]");
+        logger.info("BonitaProperties.executeAlterSql : Execute [" + sqlRequest + "]");
 
         final Statement stmt = con.createStatement();
         stmt.executeUpdate(sqlRequest);
