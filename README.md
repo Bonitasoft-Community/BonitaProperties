@@ -7,3 +7,9 @@ The new method are available to load only for one domain name, and table change.
 
 1.2 Add checkDatabase possibility : the database is not chack at each connection to improve performance
 1.3 Add administration method, REST API to get / put / admin access
+
+1.4 - Manage large value in the key (value size more than the size of the column). 
+		- Check the autocommit and not commit in case of autocommit. 
+		- Add the tenantId in the database
+
+
