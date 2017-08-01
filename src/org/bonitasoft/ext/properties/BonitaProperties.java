@@ -161,6 +161,7 @@ public class BonitaProperties extends Properties {
         Connection con = null;
         final boolean originCheckDatabaseAtFirstAccess = checkDatabaseAtFirstAccess;
         PreparedStatement pstmt = null;
+        ResultSet rs = null;
         final List<BEvent> listEvents = new ArrayList<BEvent>();
         try
         {
@@ -211,7 +212,7 @@ public class BonitaProperties extends Properties {
             }
             final List<ItemKeyValue> collectTooLargeKey = new ArrayList<ItemKeyValue>();
             int count = 0;
-            final ResultSet rs = pstmt.executeQuery();
+            rs = pstmt.executeQuery();
             while (rs.next())
             {
                 count++;
@@ -240,10 +241,7 @@ public class BonitaProperties extends Properties {
                     + "] " + (mName != null ? "*LoadProperties*" : "*LoadALLPROPERTIES*")
                     + " found[" + count + "]records sqlRequest[" + sqlRequest + "]");
 
-            pstmt.close();
-            pstmt = null;
-            con.close();
-            con = null;
+
             /*
              * if (mName != null) {
              * logger.info("Load  Properties[" + mName + "] :  " + size() + " properties");
@@ -257,10 +255,24 @@ public class BonitaProperties extends Properties {
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
             logger.severe(loggerLabel+".loadDomainName Error during load properties [" + mName + "] : " + e.toString() + " : " + exceptionDetails);
+
+            listEvents.add(new BEvent(EventErrorAtLoad, e, "properties name;[" + mName + "]"));
+        }
+        finally
+        {
+            if (rs != null) {
+                try
+                {
+                    rs.close();
+                    rs = null;
+                } catch (final SQLException localSQLException) {
+                }
+            }
             if (pstmt != null) {
                 try
                 {
                     pstmt.close();
+                    pstmt = null;
                 } catch (final SQLException localSQLException) {
                 }
             }
@@ -268,10 +280,10 @@ public class BonitaProperties extends Properties {
                 try
                 {
                     con.close();
+                    con = null;
                 } catch (final SQLException localSQLException1) {
                 }
             }
-            listEvents.add(new BEvent(EventErrorAtLoad, e, "properties name;[" + mName + "]"));
         }
         return listEvents;
     }
@@ -327,10 +339,8 @@ public class BonitaProperties extends Properties {
     }
 
     /**
-     * @param key
-     * @param resourceName
-     * @param domaineName
-     * @param value
+     *
+     * @param itemKeyValue
      */
     private void dispatchKey(final ItemKeyValue itemKeyValue)
     {
@@ -375,11 +385,12 @@ public class BonitaProperties extends Properties {
 
         Statement stmt = null;
         String sqlRequest = null;
+        Connection con = null;
         try
         {
             final Context ctx = new InitialContext();
             final DataSource dataSource = (DataSource) ctx.lookup(sqlDataSourceName);
-            Connection con = dataSource.getConnection();
+            con = dataSource.getConnection();
 
             sqlRequest = "delete from " + cstSqlTableName + " where  " + cstSqlTenantId + "= " + (mTenantId == null ? 1 : mTenantId);
             if (mName != null) {
@@ -398,8 +409,6 @@ public class BonitaProperties extends Properties {
             logger.info(loggerLabel+"Purge all with [" + sqlRequest + "]");
             stmt.executeUpdate(sqlRequest);
 
-            stmt.close();
-            stmt = null;
 
             // now create all records
             Exception exceptionDuringRecord = null;
@@ -437,22 +446,40 @@ public class BonitaProperties extends Properties {
                     con.commit();
                 }
             }
-            stmt = null;
-            con = null;
+
         } catch (final Exception e)
         {
             final StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
             logger.severe("Error during store properties [" + mName + "] sqlRequest[" + sqlRequest + "] : " + e.toString() + " : " + exceptionDetails);
-            if (stmt != null) {
-                try {
-                    stmt.close();
-                } catch (final SQLException e1) {
-                }
-            }
+
             listEvents.add(new BEvent(EventErrorAtStore, e, "properties name;[" + mName + "]"));
 
+        }
+        finally
+        {
+            if (stmt != null) {
+                try
+                {
+                    stmt.close();
+                    stmt = null;
+                }
+                catch (final SQLException e1)
+                {
+                }
+            }
+
+            if (con != null) {
+                try
+                {
+                    con.close();
+                    con = null;
+                }
+                catch (final SQLException e1)
+                {
+                }
+            }
         }
         return listEvents;
     }
@@ -543,34 +570,41 @@ public class BonitaProperties extends Properties {
             con = dataSource.getConnection();
 
             listEvents.addAll(checkCreateDatase(con));
-        } catch (final Exception e)
+        }
+        catch (final Exception e)
         {
             final StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
             logger.severe("Error during checkCreateDatase [" + exceptionDetails + "]");
-            if (con != null) {
+
+            listEvents.add(new BEvent(EventErrorAtStore, e, "properties name;[" + mName + "]"));
+        }
+        finally
+        {
+            if (con != null)
+            {
                 try
                 {
                     con.close();
-                } catch (final SQLException localSQLException) {
+                    con = null;
+                } catch (final SQLException localSQLException)
+                {
                 }
             }
-            listEvents.add(new BEvent(EventErrorAtStore, e, "properties name;[" + mName + "]"));
         }
         return listEvents;
     }
 
     /**
-     * do an insert in the SQL file
      *
-     * @param stmt
+     * @param con
      * @param resourceName
-     * @param key
-     * @param value
-     * @throws SQLException
+     * @param domainName
+     * @param record
+     * @return
      */
-    private Exception insertSql(final Connection con, final String resourceName, final String domainName, final Hashtable record /*
+    private Exception insertSql(Connection con, final String resourceName, final String domainName, final Hashtable record /*
                                                                                                                                   * , final String key, final
                                                                                                                                   * String
                                                                                                                                   * value
@@ -619,19 +653,38 @@ public class BonitaProperties extends Properties {
                 pstmt.executeUpdate();
 
             }
-            pstmt.close();
-        } catch (final SQLException e) {
+
+        } catch (final SQLException e)
+        {
             final StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
             logger.info("insertSql[" + whatToLog + "] at " + exceptionDetails);
-            if (pstmt != null) {
-                try {
-                    pstmt.close();
-                } catch (final Exception e2) {
-                }
-            };
+
             return e;
+        }
+        finally
+        {
+            if (pstmt != null)
+            {
+                try
+                {
+                    pstmt.close();
+                    pstmt = null;
+                }
+                catch (final Exception e2) {
+                }
+            }
+            if (con != null)
+            {
+                try
+                {
+                    con.close();
+                    con = null;
+                }
+                catch (final Exception e2) {
+                }
+            }
         }
         return null;
     }
