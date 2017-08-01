@@ -242,6 +242,8 @@ public class BonitaProperties extends Properties {
 
             pstmt.close();
             pstmt = null;
+	    rs.close();
+            rs = null;
             con.close();
             con = null;
             /*
@@ -257,10 +259,24 @@ public class BonitaProperties extends Properties {
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
             logger.severe(loggerLabel+".loadDomainName Error during load properties [" + mName + "] : " + e.toString() + " : " + exceptionDetails);
-            if (pstmt != null) {
+            
+            listEvents.add(new BEvent(EventErrorAtLoad, e, "properties name;[" + mName + "]"));
+        }
+	finally
+	{
+	    if (pstmt != null) 
+	    {
                 try
                 {
                     pstmt.close();
+                } catch (final SQLException localSQLException) {
+                }
+            }
+	    if (rs != null) 
+	    {
+                try
+                {
+                    rs.close();
                 } catch (final SQLException localSQLException) {
                 }
             }
@@ -270,9 +286,8 @@ public class BonitaProperties extends Properties {
                     con.close();
                 } catch (final SQLException localSQLException1) {
                 }
-            }
-            listEvents.add(new BEvent(EventErrorAtLoad, e, "properties name;[" + mName + "]"));
-        }
+            }	
+	}
         return listEvents;
     }
 
