@@ -560,7 +560,7 @@ public class BonitaProperties extends Properties {
      */
     public List<BEvent> checkDatabase()
     {
-        final List<BEvent> listEvents = new ArrayList<BEvent>();
+        List<BEvent> listEvents = new ArrayList<BEvent>();
         Connection con = null;
         try
         {
