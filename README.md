@@ -11,5 +11,7 @@ The new method are available to load only for one domain name, and table change.
 1.4 - Manage large value in the key (value size more than the size of the column). 
 		- Check the autocommit and not commit in case of autocommit. 
 		- Add the tenantId in the database
+1.4.1 Fix bug in Oracle
+1.4.2 Fix bug on connection managment
 
 

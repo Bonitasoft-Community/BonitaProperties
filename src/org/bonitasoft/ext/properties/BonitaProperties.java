@@ -20,6 +20,7 @@ import java.util.logging.Logger;
 
 import javax.naming.Context;
 import javax.naming.InitialContext;
+import javax.naming.NamingException;
 import javax.sql.DataSource;
 
 import org.bonitasoft.log.event.BEvent;
@@ -43,7 +44,7 @@ public class BonitaProperties extends Properties {
             "Check Exception ",
             "The properties are not saved", "Check Exception");
 
-    private final String loggerLabel="BonitaProperties_1.4:";
+    private final String loggerLabel="BonitaProperties_1.5:";
     /**
      * name of this properties, in order to manage only a dedicated perimeter
      */
@@ -82,8 +83,15 @@ public class BonitaProperties extends Properties {
      */
     private Hashtable<String, Hashtable<String, Object>> mAllProperties;
 
-    private String sqlDataSourceName = "java:/comp/env/bonitaSequenceManagerDS";
+    private String[] listDataSources = new String[] 
+    		{ "java:/comp/env/bonitaSequenceManagerDS",// tomcat
+    				"java:jboss/datasources/bonitaSequenceManagerDS"}; // jboss 
+    		
 
+    /** save the datasource used
+     * 
+     */
+    private String sqlDataSourceName;
     // java:/comp/env/bonitaSequenceManagerDS
 
     private final static String cstSqlTableName = "bonitaproperties";
@@ -165,9 +173,10 @@ public class BonitaProperties extends Properties {
         final List<BEvent> listEvents = new ArrayList<BEvent>();
         try
         {
-            //logger.info("Connect to [" + sqlDataSourceName + "] loaddomainename[" + domainName + "]");
-            final Context ctx = new InitialContext();
-            final DataSource dataSource = (DataSource) ctx.lookup(sqlDataSourceName);
+            final DataSource dataSource = getDataSourceConnection();
+            if (dataSource==null)
+            	throw new Exception("No datasource available");
+            
             con = dataSource.getConnection();
             if (checkDatabaseAtFirstAccess) {
                 listEvents.addAll(checkCreateDatase(con));
@@ -388,8 +397,9 @@ public class BonitaProperties extends Properties {
         Connection con = null;
         try
         {
-            final Context ctx = new InitialContext();
-            final DataSource dataSource = (DataSource) ctx.lookup(sqlDataSourceName);
+            final DataSource dataSource = getDataSourceConnection();
+            if (dataSource==null)
+            	throw new Exception("No datasource available");
             con = dataSource.getConnection();
 
             sqlRequest = "delete from " + cstSqlTableName + " where  " + cstSqlTenantId + "= " + (mTenantId == null ? 1 : mTenantId);
@@ -564,9 +574,9 @@ public class BonitaProperties extends Properties {
         Connection con = null;
         try
         {
-            final Context ctx = new InitialContext();
-
-            final DataSource dataSource = (DataSource) ctx.lookup(sqlDataSourceName);
+            final DataSource dataSource = getDataSourceConnection();
+            if (dataSource==null)
+            	throw new Exception("No datasource available");
             con = dataSource.getConnection();
 
             listEvents.addAll(checkCreateDatase(con));
@@ -598,7 +608,7 @@ public class BonitaProperties extends Properties {
 
     /**
      *
-     * @param con
+     * @param con give a connection, and this connection will not be closed
      * @param resourceName
      * @param domainName
      * @param record
@@ -644,7 +654,7 @@ public class BonitaProperties extends Properties {
                         + "," + cstSqlPropertiesKey + ":" + itemKeyValue.rsKey
                         + "," + cstSqlPropertiesValue + ":" + itemKeyValue.rsValue + "]";
 
-                pstmt.setLong(1, mTenantId);
+                pstmt.setLong(1, mTenantId==null ? 1L : mTenantId);
                 pstmt.setString(2, itemKeyValue.rsResourceName);
                 pstmt.setString(3, itemKeyValue.rsDomainName);
                 pstmt.setString(4, itemKeyValue.rsKey);
@@ -675,16 +685,7 @@ public class BonitaProperties extends Properties {
                 catch (final Exception e2) {
                 }
             }
-            if (con != null)
-            {
-                try
-                {
-                    con.close();
-                    con = null;
-                }
-                catch (final Exception e2) {
-                }
-            }
+           
         }
         return null;
     }
@@ -945,4 +946,37 @@ public class BonitaProperties extends Properties {
         return newCollectTooLargeKey;
     }
 
+    
+    private DataSource getDataSourceConnection()
+    {
+    	// logger.info(loggerLabel+".getDataSourceConnection() start");
+     	
+    	String msg="";
+    	List<String> listDatasourceToCheck = new ArrayList<String>();
+    	if (sqlDataSourceName !=null && sqlDataSourceName.trim().length()>0)
+    		listDatasourceToCheck.add(sqlDataSourceName);
+       	 for (String dataSourceString : listDataSources )
+     		listDatasourceToCheck.add(dataSourceString);
+    		
+    	 for (String dataSourceString : listDatasourceToCheck )
+    	 {
+    	    	// logger.info(loggerLabel+".getDataSourceConnection() check["+dataSourceString+"]");
+    		 try
+    		 {
+    	       final Context ctx = new InitialContext();
+               final DataSource dataSource = (DataSource) ctx.lookup(dataSourceString);
+               sqlDataSourceName = dataSourceString;
+    	    	// logger.info(loggerLabel+".getDataSourceConnection() ["+dataSourceString+"] isOk");
+               return dataSource;
+    		 }
+    		 catch( NamingException e)
+    		 {
+    			 // logger.info(loggerLabel+".getDataSourceConnection() error["+dataSourceString+"] : "+e.toString());
+    			 msg+= "DataSource["+dataSourceString+"] : error "+e.toString()+";";
+    		 }
+    	 }
+    	 logger.severe(loggerLabel+".getDataSourceConnection: Can't found a datasource : "+msg);
+    	 return null;    
+    }
+    
 }

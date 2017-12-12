@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.bonitasoft.ext.BonitaProperties</groupId>
   <artifactId>bonita-properties</artifactId>
-  <version>1.4.0</version>
+  <version>1.5</version>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <bonita.version>7.2.3</bonita.version>
@@ -33,7 +33,11 @@
           <artifactId>gson</artifactId>
           <version>1.7.2</version>
       </dependency>
-      
+      <dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>4.4</version>
+		</dependency>
      
   </dependencies>
   
