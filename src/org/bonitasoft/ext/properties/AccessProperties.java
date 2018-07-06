@@ -35,8 +35,7 @@ public class AccessProperties {
 
     private Long mTenantId;
 
-    public static class Rule
-    {
+    public static class Rule {
 
         /**
          * optional : you can give a name
@@ -85,8 +84,7 @@ public class AccessProperties {
          */
         public String userName;
 
-        public Map<String, Object> toMap()
-        {
+        public Map<String, Object> toMap() {
             final Map<String, Object> map = new HashMap<String, Object>();
             map.put("ruleName", ruleName);
             map.put("name", name);
@@ -108,8 +106,7 @@ public class AccessProperties {
             return json;
         }
 
-        public static Rule fromJson(final String json)
-        {
+        public static Rule fromJson(final String json) {
             final Gson gson = new Gson();
 
             final Rule rule = gson.fromJson(json, Rule.class);
@@ -121,30 +118,27 @@ public class AccessProperties {
          *
          * @return
          */
-        public boolean isValid()
-        {
+        public boolean isValid() {
             if (isEmpty(name)) {
                 return false;
             }
 
             return Boolean.TRUE.equals(domainIsUserId)
-                  || Boolean.TRUE.equals( isAdmin )
+                    || Boolean.TRUE.equals(isAdmin)
                     || Boolean.TRUE.equals(applyAllDomain)
-                  || ! isEmpty( roleName )
-                  || ! isEmpty( groupPath )
-                  || ! isEmpty( profileName )
+                    || !isEmpty(roleName)
+                    || !isEmpty(groupPath)
+                    || !isEmpty(profileName)
                     || !isEmpty(userName);
 
         }
 
-        public String getError()
-        {
+        public String getError() {
             return "A Name [name] must be define and then one of these parameters : [domainIsUserId,isAdmin,roleName,groupPath]";
         }
 
         @Override
-        public String toString()
-        {
+        public String toString() {
             return "Rule [" + (ruleName == null ? "" : ruleName) + "] "
                     + " Name[" + name
                     + "+ domain[" + domain
@@ -163,17 +157,15 @@ public class AccessProperties {
          *
          * @return
          */
-        public String getKeyToOrder()
-        {
+        public String getKeyToOrder() {
             return getFormattedAttribute(name) + getFormattedAttribute(domain) + getFormattedAttribute(ruleName);
         }
     }
 
-
-    public AccessProperties(final long tenantId)
-    {
+    public AccessProperties(final long tenantId) {
         mTenantId = tenantId;
     }
+
     /**
      * is Admin ?
      * Is the user part of the ADMINISTRATOR profile
@@ -182,18 +174,18 @@ public class AccessProperties {
      * @param profileAPI
      * @return
      */
-    public boolean isAdmin(final APISession apiSession, final ProfileAPI profileAPI)
-    {
+    public boolean isAdmin(final APISession apiSession, final ProfileAPI profileAPI) {
         mTenantId = apiSession.getTenantId();
-        final List<Profile> listProfiles = profileAPI.getProfilesForUser(apiSession.getUserId(), 0, 10000, ProfileCriterion.NAME_ASC);
-        for (final Profile profile : listProfiles)
-        {
+        final List<Profile> listProfiles = profileAPI.getProfilesForUser(apiSession.getUserId(), 0, 10000,
+                ProfileCriterion.NAME_ASC);
+        for (final Profile profile : listProfiles) {
             if (profile.getName().equals("Administrator")) {
                 return true;
             }
         }
         return false;
     }
+
     /**
      * Check the permission to access this properties.
      * To verify : check if there are some rule for this name. If no rule exist, then it's allowed. Else, the rule is verified.
@@ -205,15 +197,14 @@ public class AccessProperties {
      * @param identityAPI
      * @return
      */
-    public boolean isAccepted(final String name, final String domain, final boolean writeAccess, final APISession apiSession,
+    public boolean isAccepted(final String name, final String domain, final boolean writeAccess,
+            final APISession apiSession,
             final ProcessAPI processAPI,
-            final IdentityAPI identityAPI, final ProfileAPI profileAPI)
-    {
+            final IdentityAPI identityAPI, final ProfileAPI profileAPI) {
         mTenantId = apiSession.getTenantId();
 
         // only administrator can access this properties !
-        if (name.equals(cstNameRuleProperties))
-        {
+        if (name.equals(cstNameRuleProperties)) {
             return isAdmin(apiSession, profileAPI);
         }
 
@@ -223,23 +214,20 @@ public class AccessProperties {
         }
         // extract the rule for this name
         final List<Rule> listRulesForThisName = new ArrayList<Rule>();
-        for (final Rule rule : ruleResult.listRules)
-        {
+        for (final Rule rule : ruleResult.listRules) {
             if (rule.name.equalsIgnoreCase(name)) {
                 listRulesForThisName.add(rule);
             }
         }
-        logger.info("AccessProperties.isAccepted: Nb rule for[" + name + "] domain[" + domain + "] [" + listRulesForThisName.size() + "] : if (0=> accepted)");
-        if (listRulesForThisName.size() == 0)
-        {
+        logger.info("AccessProperties.isAccepted: Nb rule for[" + name + "] domain[" + domain + "] ["
+                + listRulesForThisName.size() + "] : if (0=> accepted)");
+        if (listRulesForThisName.size() == 0) {
             return true; // no rule, access allowed
         }
-        try
-        {
+        try {
             final User user = identityAPI.getUser(apiSession.getUserId());
 
-            for (final Rule rule : listRulesForThisName)
-            {
+            for (final Rule rule : listRulesForThisName) {
                 String debugRule = "";
                 debugRule += " ReadOnly=" + rule.isReadOnly + ",writeAccess=" + writeAccess;
                 if (rule.isReadOnly && writeAccess) {
@@ -255,13 +243,10 @@ public class AccessProperties {
                 //          rule.domainIsUserId    false          false         true
                 //          rule.domain=sfo        false          true          false
                 debugRule += ";applyAllDomain=" + rule.applyAllDomain;
-                if (rule.applyAllDomain != null && rule.applyAllDomain)
-                {
+                if (rule.applyAllDomain != null && rule.applyAllDomain) {
                     // don't check any rule according the domain
                     debugRule += ":Allow;";
-                }
-                else
-                {
+                } else {
                     // check now domainIsUserId
                     debugRule += ";domainIsUserId=" + rule.domainIsUserId;
 
@@ -269,14 +254,13 @@ public class AccessProperties {
                         debugRule = ";domain[" + domain + "] userId[" + apiSession.getUserId() + "]";
                         if (domain == null || !domain.equals(String.valueOf(apiSession.getUserId()))) {
                             debugRule += ":rejected;";
-                            acceptThisRule += "rule.domainIsUserId and domain is different domain[" + domain + "] userId["
+                            acceptThisRule += "rule.domainIsUserId and domain is different domain[" + domain
+                                    + "] userId["
                                     + String.valueOf(apiSession.getUserId()) + ";";
                         } else {
-                            debugRule+=":accepted;";
+                            debugRule += ":accepted;";
                         }
-                    }
-                    else
-                    {
+                    } else {
                         debugRule += ";CheckDomain[" + domain + "] rule.domain[" + rule.domain + "]";
 
                         // check domain
@@ -284,37 +268,35 @@ public class AccessProperties {
                             debugRule += "Domain[" + domain + "] - rule.domain[" + rule.domain + "]";
                             if (rule.domain == null || !domain.equals(rule.domain)) {
                                 debugRule += ":rejected;";
-                                acceptThisRule += "Rule not apply to the domain[" + domain + "] (rule.domain [" + rule.domain + "]);";
+                                acceptThisRule += "Rule not apply to the domain[" + domain + "] (rule.domain ["
+                                        + rule.domain + "]);";
                             } else {
-                                debugRule+=":accepted;";
+                                debugRule += ":accepted;";
                             }
 
-                        }
-                        else
-                        {
+                        } else {
                             debugRule += ":accepted;";
                             if (rule.domain != null) {
                                 debugRule += "Domain is null and rule.domain[" + rule.domain + "];rejected";
-                                acceptThisRule += "No domain, and rule is on a domain (rule.domain [" + rule.domain + "]);";
+                                acceptThisRule += "No domain, and rule is on a domain (rule.domain [" + rule.domain
+                                        + "]);";
                             } else {
-                                debugRule+=":accepted";
+                                debugRule += ":accepted";
                             }
                         }
                     }
                 }
 
-
                 // profile and admin
-                final List<Profile> listProfiles = profileAPI.getProfilesForUser(apiSession.getUserId(), 0, 10000, ProfileCriterion.NAME_ASC);
+                final List<Profile> listProfiles = profileAPI.getProfilesForUser(apiSession.getUserId(), 0, 10000,
+                        ProfileCriterion.NAME_ASC);
                 boolean isRegisterInAdminProfile = false;
                 boolean isRegisterInRuleProfile = false;
-                for (final Profile profile : listProfiles)
-                {
+                for (final Profile profile : listProfiles) {
                     if (profile.getName().equals("Administrator")) {
                         isRegisterInAdminProfile = true;
                     }
-                    if (!isEmpty(rule.profileName) && profile.getName().equals(rule.profileName))
-                    {
+                    if (!isEmpty(rule.profileName) && profile.getName().equals(rule.profileName)) {
                         isRegisterInRuleProfile = true;
                     }
                 }
@@ -330,12 +312,12 @@ public class AccessProperties {
                 // role & group
                 boolean isRegisterInRuleRole = false;
                 boolean isRegisterInRuleGroup = false;
-                final List<UserMembership> listMemberShip = identityAPI.getUserMemberships(apiSession.getUserId(), 0, 10000,
+                final List<UserMembership> listMemberShip = identityAPI.getUserMemberships(apiSession.getUserId(), 0,
+                        10000,
                         UserMembershipCriterion.ROLE_NAME_ASC);
                 final Role role = isEmpty(rule.roleName) ? null : identityAPI.getRoleByName(rule.roleName);
                 final Group group = isEmpty(rule.groupPath) ? null : identityAPI.getGroupByPath(rule.groupPath);
-                for (final UserMembership userMemberShip : listMemberShip)
-                {
+                for (final UserMembership userMemberShip : listMemberShip) {
                     if (role != null && userMemberShip.getRoleId() == role.getId()) {
                         isRegisterInRuleRole = true;
                     }
@@ -352,22 +334,22 @@ public class AccessProperties {
 
                 // userName
                 if (!isEmpty(rule.userName) && !rule.userName.equals(user.getUserName())) {
-                    acceptThisRule += "rule.userName : userName[" + user.getUserName() + "] does not match ruleuser[" + rule.userName + "];";
+                    acceptThisRule += "rule.userName : userName[" + user.getUserName() + "] does not match ruleuser["
+                            + rule.userName + "];";
                 }
 
                 logger.info("AccessProperties.rule: Rule[" + rule.ruleName + "] " + debugRule);
 
-                if (acceptThisRule.length() == 0)
-                {
+                if (acceptThisRule.length() == 0) {
                     logger.info("AccessProperties.isAccepted: one rule [" + rule.ruleName + "] ACCEPTED");
                     return true;
                 } else {
-                    logger.info("AccessProperties.isAccepted: rule [" + rule.ruleName + "] not accepted " + acceptThisRule);
+                    logger.info(
+                            "AccessProperties.isAccepted: rule [" + rule.ruleName + "] not accepted " + acceptThisRule);
                 }
 
             }
-        } catch (final Exception e)
-        {
+        } catch (final Exception e) {
             logger.severe("AccessProperties.isAccepted Exception during isAccepted " + e.toString());
         }
         return false;
@@ -384,16 +366,14 @@ public class AccessProperties {
         public List<BEvent> listEvents;
     }
 
-    public RulesResult getRules()
-    {
+    public RulesResult getRules() {
         final RulesResult rulesResult = new RulesResult();
 
         final BonitaProperties bonitaProperties = new BonitaProperties(cstNameRuleProperties, mTenantId);
         bonitaProperties.setCheckDatabase(false);
         rulesResult.listEvents = bonitaProperties.load();
 
-        for (int i = 0; i < 1000; i++)
-        {
+        for (int i = 0; i < 1000; i++) {
             final String ruleJson = bonitaProperties.getProperty("rule_" + i);
             if (ruleJson == null) {
                 break;
@@ -410,15 +390,13 @@ public class AccessProperties {
      * @param listRules
      * @return
      */
-    public List<BEvent> setRules(final List<Rule> listRules)
-    {
+    public List<BEvent> setRules(final List<Rule> listRules) {
         final BonitaProperties bonitaProperties = new BonitaProperties(cstNameRuleProperties, mTenantId);
         bonitaProperties.setCheckDatabase(false);
 
         bonitaProperties.load();
         bonitaProperties.clear();
-        for (int i = 0; i < listRules.size(); i++)
-        {
+        for (int i = 0; i < listRules.size(); i++) {
             logger.info("AccessProperties.setRules : write rule[" + listRules.get(i));
 
             bonitaProperties.setProperty("rule_" + i, listRules.get(i).toJson());
@@ -427,14 +405,13 @@ public class AccessProperties {
         return listEvents;
     }
 
-    public static boolean isEmpty(final String attribut)
-    {
+    public static boolean isEmpty(final String attribut) {
         return attribut == null || attribut.trim().length() == 0;
     }
 
-    public static String getFormattedAttribute(final String attribut)
-    {
-        return ((attribut == null ? "" : attribut) + "                                                   ").substring(0, 50) + "~";
+    public static String getFormattedAttribute(final String attribut) {
+        return ((attribut == null ? "" : attribut) + "                                                   ").substring(0,
+                50) + "~";
     }
 
 }
