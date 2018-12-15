@@ -46,7 +46,7 @@ public class BonitaProperties extends Properties {
             "Check Exception ",
             "The properties are not saved", "Check Exception");
 
-    private final String loggerLabel = "BonitaProperties_1.5:";
+    private final String loggerLabel = "BonitaProperties_1.6.1:";
     /**
      * name of this properties, in order to manage only a dedicated perimeter
      */
@@ -104,7 +104,7 @@ public class BonitaProperties extends Properties {
     /**
      * size is set under 4000 due to an oracle limitation of varchar to 4000
      */
-    private final static int cstSqlPropertiesValueLength = 3990;
+    private final static int cstSqlPropertiesValueLength = 3500;
 
     private boolean checkDatabaseAtFirstAccess = true;
 
@@ -714,14 +714,14 @@ public class BonitaProperties extends Properties {
                 }
                 logger.info(loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : Correct ");
             } else {
-                logger.info(loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : NOT EXIST : create it");
                 // create the table
                 final String createTableString = "create table " + cstSqlTableName + " ("
                         + getSqlField(cstSqlTenantId, -1, databaseProductName) + ", "
                         + getSqlField(cstSqlResourceName, 200, databaseProductName) + ", "
                         + getSqlField(cstSqldomainName, 500, databaseProductName) + ", "
                         + getSqlField(cstSqlPropertiesKey, 200, databaseProductName) + ", "
-                        + getSqlField(cstSqlPropertiesValue, 10000, databaseProductName) + ")";
+                        + getSqlField(cstSqlPropertiesValue, cstSqlPropertiesValueLength, databaseProductName) + ")";
+                logger.info(loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : NOT EXIST : create it with script["+createTableString+"]");
                 executeAlterSql(con, createTableString);
 
             }
@@ -777,7 +777,7 @@ public class BonitaProperties extends Properties {
             return colName + " VARCHAR2(" + colSize + ")";
         }
         if ("PostgreSQL".equalsIgnoreCase(databaseProductName)) {
-            return colName + " varying(" + colSize + ")";
+            return colName + " varchar(" + colSize + ")"; // old varying
         } else if ("H2".equalsIgnoreCase(databaseProductName)) {
             return colName + "   varchar(" + colSize + ")";
         } else {
