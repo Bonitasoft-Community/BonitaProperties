@@ -1,5 +1,6 @@
-package org.bonitasoft.ext.properties;
+package org.bonitasoft.properties;
 
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.sql.Connection;
@@ -11,7 +12,9 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +32,12 @@ import org.bonitasoft.log.event.BEventFactory;
 import org.bonitasoft.web.extension.page.PageResourceProvider;
 
 @SuppressWarnings("serial")
+/**
+ * 
+ * BonitaProperties extends Properties except for Stream argument.
+ * Using the stream argument (to save document for example), use only the method get / set
+ *
+ */
 public class BonitaProperties extends Properties {
 
     private static Logger logger = Logger.getLogger("org.bonitasoft.ext.properties");
@@ -46,7 +55,7 @@ public class BonitaProperties extends Properties {
             "Check Exception ",
             "The properties are not saved", "Check Exception");
 
-    private final String loggerLabel = "BonitaProperties_1.6.1:";
+    private final String loggerLabel = "BonitaProperties_2.1.0:";
     /**
      * name of this properties, in order to manage only a dedicated perimeter
      */
@@ -83,8 +92,16 @@ public class BonitaProperties extends Properties {
      * ......}
      * }
      */
+    /** use hastable to be thread safe*/
     private Hashtable<String, Hashtable<String, Object>> mAllProperties;
 
+   
+    private Hashtable<String, InputStream> mPropertiesStream = new Hashtable<String,InputStream>();
+    /** we mark in this set all key which change (delete, update, insert). Then, at update, we can do the correct change, not all.
+     * 
+     */
+    private HashSet<String> mMarkPropertiesStreamToUpdate = new HashSet<String>();
+    
     private String[] listDataSources = new String[] { "java:/comp/env/bonitaSequenceManagerDS", // tomcat
             "java:jboss/datasources/bonitaSequenceManagerDS" }; // jboss 
 
@@ -101,6 +118,8 @@ public class BonitaProperties extends Properties {
 
     private final static String cstSqlPropertiesKey = "propkey";
     private final static String cstSqlPropertiesValue = "propvalue";
+    private final static String cstSqlPropertiesStream = "propstream";
+    
     /**
      * size is set under 4000 due to an oracle limitation of varchar to 4000
      */
@@ -156,7 +175,8 @@ public class BonitaProperties extends Properties {
     public final static String cstMarkerSplitTooLargeKey = "_#~_";
 
     /**
-     * load all the properties informations
+     * load all the properties informations.
+     * Attention, the checkDatabaseAtFirstAccess is use to check the database structure. If you don't want that and get fast access, 
      */
     public List<BEvent> loaddomainName(final String domainName) {
         // logger.info("BonitaProperties.loadDomainName [" + domainName + "] CheckDatabase[" + checkDatabaseAtFirstAccess + "]");
@@ -180,12 +200,9 @@ public class BonitaProperties extends Properties {
                 return listEvents;
             }
             String sqlRequest = "select * from bonitaproperties where (" + cstSqlTenantId + "= "
-                    + (mTenantId == null ? 1 : mTenantId);
+                    + (mTenantId == null ? (" 1 or " + cstSqlTenantId + " is null") : mTenantId);
             // be compatible with 1.3 or lower which continue to read / write in this table : the tenantId will be null then at each write
             // so if an application using 1.3 move to 1.4, it must continue to read the data
-            if (mTenantId == null && mTenantId == 1) {
-                sqlRequest += " or " + cstSqlTenantId + " is null";
-            }
             sqlRequest += ")";
 
             final List<Object> listSqlParameters = new ArrayList<Object>();
@@ -204,7 +221,9 @@ public class BonitaProperties extends Properties {
             }
 
             //logger.info("sqlRequest[" + sqlRequest + "]");
-
+            mPropertiesStream = new Hashtable<String, InputStream>();
+            mMarkPropertiesStreamToUpdate=new HashSet<String>();
+            
             pstmt = con.prepareStatement(sqlRequest);
             for (int i = 0; i < listSqlParameters.size(); i++) {
                 pstmt.setObject(i + 1, listSqlParameters.get(i));
@@ -288,6 +307,8 @@ public class BonitaProperties extends Properties {
         public String rsDomainName;
         public String rsKey;
         public String rsValue;
+        // save document
+        public InputStream rsStream;
 
         /** theses fields are used to recompose the key from a split key */
         public String baseKey;
@@ -301,26 +322,40 @@ public class BonitaProperties extends Properties {
             itemKeyValue.rsDomainName = domainName;
             itemKeyValue.rsKey = key;
             itemKeyValue.rsValue = value;
+            itemKeyValue.rsStream = null;
             return itemKeyValue;
         }
+        public static ItemKeyValue getInstanceStream(final long tenantId, final String resourceName, final String domainName,
+            final String key, final InputStream valueStream) {
+        final ItemKeyValue itemKeyValue = new ItemKeyValue();
+        itemKeyValue.rsTenantId = tenantId;
+        itemKeyValue.rsResourceName = resourceName;
+        itemKeyValue.rsDomainName = domainName;
+        itemKeyValue.rsKey = key;
+        itemKeyValue.rsStream = valueStream;
+        return itemKeyValue;
+    }
 
         public static ItemKeyValue getInstance(final ItemKeyValue source) {
             final ItemKeyValue itemKeyValue = new ItemKeyValue();
-            itemKeyValue.rsTenantId = source.rsTenantId;
+            itemKeyValue.rsTenantId     = source.rsTenantId;
             itemKeyValue.rsResourceName = source.rsResourceName;
-            itemKeyValue.rsDomainName = source.rsDomainName;
-            itemKeyValue.rsKey = source.rsKey;
-            itemKeyValue.rsValue = source.rsValue;
+            itemKeyValue.rsDomainName   = source.rsDomainName;
+            itemKeyValue.rsKey          = source.rsKey;
+            itemKeyValue.rsValue        = source.rsValue;
+            itemKeyValue.rsStream       = source.rsStream;
             return itemKeyValue;
         }
 
         public static ItemKeyValue getInstance(final ResultSet rs) throws SQLException {
             final ItemKeyValue itemKeyValue = new ItemKeyValue();
-            itemKeyValue.rsTenantId = rs.getLong(cstSqlTenantId);
-            itemKeyValue.rsResourceName = rs.getString(cstSqlResourceName);
-            itemKeyValue.rsDomainName = rs.getString(cstSqldomainName);
-            itemKeyValue.rsKey = rs.getString(cstSqlPropertiesKey);
-            itemKeyValue.rsValue = rs.getString(cstSqlPropertiesValue);
+            itemKeyValue.rsTenantId       = rs.getLong(cstSqlTenantId);
+            itemKeyValue.rsResourceName   = rs.getString(cstSqlResourceName);
+            itemKeyValue.rsDomainName     = rs.getString(cstSqldomainName);
+            itemKeyValue.rsKey            = rs.getString(cstSqlPropertiesKey);
+            itemKeyValue.rsValue          = rs.getString(cstSqlPropertiesValue);
+            itemKeyValue.rsStream         = rs.getBinaryStream(cstSqlPropertiesStream);
+            
             return itemKeyValue;
         }
     }
@@ -330,7 +365,9 @@ public class BonitaProperties extends Properties {
      */
     private void dispatchKey(final ItemKeyValue itemKeyValue) {
         if (mName != null) {
-
+          if (itemKeyValue.rsStream!=null)
+            mPropertiesStream.put(itemKeyValue.rsKey, itemKeyValue.rsStream);
+          else if (itemKeyValue.rsValue !=null)
             setProperty(itemKeyValue.rsKey, itemKeyValue.rsValue);
         } else {
             if (mAllProperties == null) {
@@ -342,19 +379,57 @@ public class BonitaProperties extends Properties {
                 mAllProperties.put(itemKeyValue.rsResourceName, mapName);
             }
             if (itemKeyValue.rsDomainName != null) {
-                Hashtable<String, String> mapDomain = (Hashtable<String, String>) mapName
-                        .get(itemKeyValue.rsDomainName);
+                @SuppressWarnings("unchecked")
+                Hashtable<String, String> mapDomain = (Hashtable<String, String>) mapName.get(itemKeyValue.rsDomainName);
                 if (mapDomain == null) {
                     mapDomain = new Hashtable<String, String>();
                     mapName.put(itemKeyValue.rsDomainName, mapDomain);
                 }
-                mapDomain.put(itemKeyValue.rsKey, itemKeyValue.rsValue);
+                // don't save the stream in the MapDomain for the moment
+                if (itemKeyValue.rsStream!=null)
+                  mapDomain.put(itemKeyValue.rsKey, "Stream");
+                else if (itemKeyValue.rsValue!=null)
+                  mapDomain.put(itemKeyValue.rsKey, itemKeyValue.rsValue);
             } else {
-                mapName.put(itemKeyValue.rsKey, itemKeyValue.rsValue);
+              if (itemKeyValue.rsStream!=null)
+                mapName.put(itemKeyValue.rsKey, "stream");
+              else if (itemKeyValue.rsValue!=null)
+              mapName.put(itemKeyValue.rsKey, itemKeyValue.rsValue);
             }
         }
     }
 
+    
+    /* ******************************************************************************** */
+    /*                                                                                  */
+    /* Special getter/setter                                                            */
+    /*                                                                                  */
+    /*                                                                                  */
+    /* ******************************************************************************** */
+    public synchronized Object setPropertyStream(String key, InputStream value) {
+        mMarkPropertiesStreamToUpdate.add( key );
+      if (value==null) {
+        mPropertiesStream.remove(key);
+        return null;
+      }
+      else
+        return mPropertiesStream.put( key,  value);
+    }
+    
+    public InputStream getPropertyStream(String key) {
+        return mPropertiesStream.get( key);
+    }
+    public void removeStream(String key ) {
+        mMarkPropertiesStreamToUpdate.add( key );
+        mPropertiesStream.remove( key );
+    }
+    /**
+     * Attention : the enumerate may be large, so this is a method directly on the private object, not a copy
+     * @return
+     */
+    public Enumeration<String> propertyStream() {
+        return mPropertiesStream.keys();
+    }
     /**
      * save all properties informations
      * ATTENTION : the current information are purge and replace with the new one. This is not a merge, so if the application want to do an update, a first
@@ -371,6 +446,10 @@ public class BonitaProperties extends Properties {
             final DataSource dataSource = getDataSourceConnection();
             if (dataSource == null)
                 throw new Exception("No datasource available");
+            
+            
+            // attention: if there are still in the propertiesStream some Blob read from the database, it's important to REPLACE them now by a different inputStream, else the read/write will failed
+           
             con = dataSource.getConnection();
 
             sqlRequest = "delete from " + cstSqlTableName + " where  " + cstSqlTenantId + "= "
@@ -384,23 +463,52 @@ public class BonitaProperties extends Properties {
             } else {
                 sqlRequest += " and " + cstSqldomainName + "= '" + mDomainName + "'";
             }
+            String baseRequest = sqlRequest;
+            
+            // be smart : does not delete the stream, only on change.
+            sqlRequest +=" and "+cstSqlPropertiesStream +" is null";
+            
+            // now, purge all Stream marked
+            
             stmt = con.createStatement();
 
             logger.info(loggerLabel + "Purge all with [" + sqlRequest + "]");
             stmt.executeUpdate(sqlRequest);
 
+            
+            // now purge all stream marked
+            sqlRequest = baseRequest+" and "+cstSqlPropertiesKey+" in (";
+            String listKey="";
+            for (String key : mMarkPropertiesStreamToUpdate)
+            {
+                listKey+=", '"+key+"' ";
+            }
+            if (listKey.length() > 0)
+            {
+                listKey = listKey.substring(1);
+                sqlRequest += listKey+")";
+                stmt.executeUpdate(sqlRequest);
+            }
+            
+            
             // now create all records
             Exception exceptionDuringRecord = null;
             if (mName != null) {
-                exceptionDuringRecord = insertSql(con, mName, mDomainName, this);
+              // save the properties AND the mAllProperties which contains Stream
+              exceptionDuringRecord = insertSql(con, mName, mDomainName, null, null, this);
+              if (exceptionDuringRecord != null)
+                listEvents.add(
+                        new BEvent(EventErrorAtStore, exceptionDuringRecord, "properties name;[" + mName + "]"));
+              
+
+                exceptionDuringRecord = insertSql(con, mName, mDomainName, mPropertiesStream, mMarkPropertiesStreamToUpdate, null);
                 if (exceptionDuringRecord != null)
                     listEvents.add(
                             new BEvent(EventErrorAtStore, exceptionDuringRecord, "properties name;[" + mName + "]"));
 
             } else {
-
                 for (final String resourceName : mAllProperties.keySet()) {
-                    exceptionDuringRecord = insertSql(con, resourceName, mDomainName, mAllProperties.get(resourceName));
+                    exceptionDuringRecord = insertSql(con, resourceName, mDomainName, null, null, mAllProperties.get(resourceName));
                     if (exceptionDuringRecord != null) {
                         listEvents.add(new BEvent(EventErrorAtStore, exceptionDuringRecord,
                                 "properties name;[" + mName + "]"));
@@ -554,12 +662,12 @@ public class BonitaProperties extends Properties {
      * @param record
      * @return
      */
-    private Exception insertSql(Connection con, final String resourceName, final String domainName,
-            final Hashtable record /*
-                                    * , final String key, final
-                                    * String
-                                    * value
-                                    */)
+    private Exception insertSql(Connection con, 
+        final String resourceName, 
+        final String domainName,
+        final Hashtable<String,InputStream> property,
+        final HashSet<String> markPropertiesStreamToUpdate,
+        @SuppressWarnings("rawtypes") final Hashtable record)
 
     {
         /*
@@ -569,12 +677,35 @@ public class BonitaProperties extends Properties {
          */
         //------------- prepare the data
         List<ItemKeyValue> listItems = new ArrayList<ItemKeyValue>();
-        for (final Object key : record.keySet()) {
-            final ItemKeyValue itemKeyValue = ItemKeyValue.getInstance(mTenantId, resourceName, domainName,
+        if (property!=null)
+        {
+            
+          for (final Object key : property.keySet()) {
+            if (property.get( key ) ==null)
+              continue;
+            // only if this is part of the streamToUpdate
+            if (markPropertiesStreamToUpdate.contains( key ))
+            {
+              final ItemKeyValue itemKeyValue = ItemKeyValue.getInstanceStream(mTenantId, resourceName, domainName,
                     key.toString(),
-                    record.get(key) == null ? null : record.get(key).toString());
-            listItems.add(itemKeyValue);
+                    property.get(key));
+              listItems.add(itemKeyValue);
+            }
+          }
         }
+        if (record!=null)
+        {
+          for (final Object key : record.keySet()) {
+            if (record.get( key ) ==null)
+              continue;
+              final ItemKeyValue itemKeyValue = ItemKeyValue.getInstance(mTenantId, resourceName, domainName,
+                    key.toString(),
+                    record.get(key).toString());
+              listItems.add(itemKeyValue);
+            }
+        }
+        
+        
         // decompose
         listItems = decomposeTooLargekey(listItems);
 
@@ -584,7 +715,8 @@ public class BonitaProperties extends Properties {
                 + "," + cstSqldomainName
                 + "," + cstSqlPropertiesKey
                 + "," + cstSqlPropertiesValue
-                + ") VALUES( ?, ?,?,?,?)";
+                + "," + cstSqlPropertiesStream
+                + ") VALUES( ?, ?,?,?,?,?)";
         String whatToLog = "prepareStatement";
         PreparedStatement pstmt = null;
         try {
@@ -593,7 +725,9 @@ public class BonitaProperties extends Properties {
                 whatToLog = "values [" + cstSqlResourceName + ":" + itemKeyValue.rsResourceName + "] "
                         + "," + cstSqldomainName + ":" + itemKeyValue.rsDomainName
                         + "," + cstSqlPropertiesKey + ":" + itemKeyValue.rsKey
-                        + "," + cstSqlPropertiesValue + ":" + itemKeyValue.rsValue + "]";
+                        + "," + cstSqlPropertiesValue + ":" + itemKeyValue.rsValue
+                        + "," + cstSqlPropertiesStream + ":" + (itemKeyValue.rsStream ==null ? "null" : "xx") 
+                        + "]";
 
                 pstmt.setLong(1, mTenantId == null ? 1L : mTenantId);
                 pstmt.setString(2, itemKeyValue.rsResourceName);
@@ -601,6 +735,7 @@ public class BonitaProperties extends Properties {
                 pstmt.setString(4, itemKeyValue.rsKey);
 
                 pstmt.setString(5, itemKeyValue.rsValue);
+                pstmt.setBinaryStream(6, itemKeyValue.rsStream);
                 pstmt.executeUpdate();
 
             }
@@ -665,6 +800,7 @@ public class BonitaProperties extends Properties {
                 listColsExpected.put(cstSqldomainName.toLowerCase(), 500);
                 listColsExpected.put(cstSqlPropertiesKey.toLowerCase(), 200);
                 listColsExpected.put(cstSqlPropertiesValue.toLowerCase(), cstSqlPropertiesValueLength);
+                listColsExpected.put(cstSqlPropertiesStream.toLowerCase(), -2);
 
                 final Map<String, Integer> alterCols = new HashMap<String, Integer>();
 
@@ -720,7 +856,9 @@ public class BonitaProperties extends Properties {
                         + getSqlField(cstSqlResourceName, 200, databaseProductName) + ", "
                         + getSqlField(cstSqldomainName, 500, databaseProductName) + ", "
                         + getSqlField(cstSqlPropertiesKey, 200, databaseProductName) + ", "
-                        + getSqlField(cstSqlPropertiesValue, cstSqlPropertiesValueLength, databaseProductName) + ")";
+                        + getSqlField(cstSqlPropertiesValue, cstSqlPropertiesValueLength, databaseProductName) +","
+                        + getSqlField(cstSqlPropertiesStream, -2, databaseProductName) 
+                        + ")";
                 logger.info(loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : NOT EXIST : create it with script["+createTableString+"]");
                 executeAlterSql(con, createTableString);
 
@@ -767,11 +905,21 @@ public class BonitaProperties extends Properties {
             } else if ("PostgreSQL".equalsIgnoreCase(databaseProductName)) {
                 return colName + " BIGINT";
             } else if ("H2".equalsIgnoreCase(databaseProductName)) {
-                return colName + "   BIGINT";
+                return colName + " BIGINT";
             }
-            return colName + "   BIGINT";
+            return colName + " BIGINT";
         }
-
+        if (colSize == -2) {
+          // long
+          if ("oracle".equalsIgnoreCase(databaseProductName)) {
+              return colName + " BLOB ";
+          } else if ("PostgreSQL".equalsIgnoreCase(databaseProductName)) {
+              return colName + " blob bytea";
+          } else if ("H2".equalsIgnoreCase(databaseProductName)) {
+              return colName + " BLOB";
+          }
+          return colName + " BLOB";
+      }
         // varchar
         if ("oracle".equalsIgnoreCase(databaseProductName)) {
             return colName + " VARCHAR2(" + colSize + ")";
@@ -779,9 +927,9 @@ public class BonitaProperties extends Properties {
         if ("PostgreSQL".equalsIgnoreCase(databaseProductName)) {
             return colName + " varchar(" + colSize + ")"; // old varying
         } else if ("H2".equalsIgnoreCase(databaseProductName)) {
-            return colName + "   varchar(" + colSize + ")";
+            return colName + " varchar(" + colSize + ")";
         } else {
-            return colName + "   varchar(" + colSize + ")";
+            return colName + " varchar(" + colSize + ")";
         }
     }
 

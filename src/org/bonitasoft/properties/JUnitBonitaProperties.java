@@ -1,15 +1,14 @@
-package org.bonitasoft.ext.properties;
+package org.bonitasoft.properties;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-import org.bonitasoft.ext.properties.BonitaProperties.ItemKeyValue;
 import org.bonitasoft.log.event.BEvent;
-import org.junit.Before;
+import org.bonitasoft.properties.BonitaProperties.ItemKeyValue;
 import org.junit.Test;
 
 public class JUnitBonitaProperties {
