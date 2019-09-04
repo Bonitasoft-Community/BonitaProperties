@@ -1,4 +1,4 @@
-package org.bonitasoft.ext.properties;
+package org.bonitasoft.properties;
 
 import java.util.ArrayList;
 import java.util.HashMap;

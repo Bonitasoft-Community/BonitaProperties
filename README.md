@@ -13,5 +13,7 @@ The new method are available to load only for one domain name, and table change.
 		- Add the tenantId in the database
 1.4.1 Fix bug in Oracle
 1.4.2 Fix bug on connection managment
+2.0 	Introduce properties stream
+2.1 	Purge properties stream and change the package to org.bonitasoft.properties
 
 
