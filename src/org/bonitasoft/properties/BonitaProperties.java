@@ -179,7 +179,7 @@ public class BonitaProperties extends Properties {
      * Attention, the checkDatabaseAtFirstAccess is use to check the database structure. If you don't want that and get fast access, 
      */
     public List<BEvent> loaddomainName(final String domainName) {
-        // logger.info("BonitaProperties.loadDomainName [" + domainName + "] CheckDatabase[" + checkDatabaseAtFirstAccess + "]");
+        // logger.fine("BonitaProperties.loadDomainName [" + domainName + "] CheckDatabase[" + checkDatabaseAtFirstAccess + "]");
         mDomainName = domainName;
         Connection con = null;
         final boolean originCheckDatabaseAtFirstAccess = checkDatabaseAtFirstAccess;
@@ -220,7 +220,7 @@ public class BonitaProperties extends Properties {
                 }
             }
 
-            //logger.info("sqlRequest[" + sqlRequest + "]");
+            //logger.fine("sqlRequest[" + sqlRequest + "]");
             mPropertiesStream = new Hashtable<String, InputStream>();
             mMarkPropertiesStreamToUpdate=new HashSet<String>();
             
@@ -250,7 +250,7 @@ public class BonitaProperties extends Properties {
             for (final ItemKeyValue itemKeyValue : recomposeKey) {
                 dispatchKey(itemKeyValue);
             }
-            logger.info(loggerLabel + ".Loadfrom  [" + mDomainName
+            logger.fine(loggerLabel + ".Loadfrom  [" + mDomainName
                     + "] CheckDatabase[" + originCheckDatabaseAtFirstAccess
                     + "] name[" + mName
                     + "] " + (mName != null ? "*LoadProperties*" : "*LoadALLPROPERTIES*")
@@ -258,9 +258,9 @@ public class BonitaProperties extends Properties {
 
             /*
              * if (mName != null) {
-             * logger.info("Load  Properties[" + mName + "] :  " + size() + " properties");
+             * logger.fine("Load  Properties[" + mName + "] :  " + size() + " properties");
              * } else {
-             * logger.info("Load  AllProperties :  " + mAllProperties.size() + " properties");
+             * logger.fine("Load  AllProperties :  " + mAllProperties.size() + " properties");
              * }
              */
         } catch (final Exception e) {
@@ -437,7 +437,7 @@ public class BonitaProperties extends Properties {
      */
     public List<BEvent> store() {
         final List<BEvent> listEvents = new ArrayList<BEvent>();
-        logger.info(loggerLabel + "store()");
+        logger.fine(loggerLabel + "store()");
 
         Statement stmt = null;
         String sqlRequest = null;
@@ -472,7 +472,7 @@ public class BonitaProperties extends Properties {
             
             stmt = con.createStatement();
 
-            logger.info(loggerLabel + "Purge all with [" + sqlRequest + "]");
+            logger.fine(loggerLabel + "Purge all with [" + sqlRequest + "]");
             stmt.executeUpdate(sqlRequest);
 
             
@@ -518,10 +518,10 @@ public class BonitaProperties extends Properties {
             }
             // maybe the database are in autocommit mode ? In that situation, do not commit
             if (con.getAutoCommit()) {
-                logger.info(loggerLabel + " Database are in Autocommit");
+                logger.fine(loggerLabel + " Database are in Autocommit");
             } else {
                 if (exceptionDuringRecord != null) {
-                    logger.info(loggerLabel + " Roolback");
+                    logger.fine(loggerLabel + " Rollback");
                     con.rollback();
                 } else {
                     con.commit();
@@ -580,14 +580,14 @@ public class BonitaProperties extends Properties {
     /*                                                                                  */
     /* ******************************************************************************** */
     public void traceInLog() {
-        logger.info(loggerLabel + "trace()");
+        logger.fine(loggerLabel + "trace()");
         if (mAllProperties != null)
             for (String domaineName : mAllProperties.keySet()) {
                 Map<String, Object> subProperties = mAllProperties.get(domaineName);
                 for (String key : mAllProperties.keySet()) {
                     Object value = subProperties.get(key);
 
-                    logger.info(loggerLabel + " allProperties[" + domaineName + "] .key(" + key + ") value=["
+                    logger.fine(loggerLabel + " allProperties[" + domaineName + "] .key(" + key + ") value=["
                             + (value == null ? null : (value.toString().length() > 10
                                     ? value.toString().substring(0, 10) + "..." : value))
                             + "]");
@@ -596,7 +596,7 @@ public class BonitaProperties extends Properties {
 
         for (Object key : this.keySet()) {
             String value = this.getProperty(key.toString());
-            logger.info(loggerLabel + " key(" + key + ") value=["
+            logger.fine(loggerLabel + " key(" + key + ") value=["
                     + (value == null ? null
                             : (value.toString().length() > 10 ? value.toString().substring(0, 10) + "..." : value))
                     + "]");
@@ -744,7 +744,7 @@ public class BonitaProperties extends Properties {
             final StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
-            logger.info("insertSql[" + whatToLog + "] at " + exceptionDetails);
+            logger.fine("insertSql[" + whatToLog + "] at " + exceptionDetails);
 
             return e;
         } finally {
@@ -822,17 +822,17 @@ public class BonitaProperties extends Properties {
                     final Integer expectedSize = listColsExpected.containsKey(colName.toLowerCase())
                             ? listColsExpected.get(colName.toLowerCase()) : null;
                     if (expectedSize == null) {
-                        logger.info("Colum  [" + colName.toLowerCase() + "] : does not exist in [ " + listColsExpected
+                        logger.fine("Colum  [" + colName.toLowerCase() + "] : does not exist in [ " + listColsExpected
                                 + "];");
                         continue; // this columns is new
                     }
                     if (length < expectedSize) {
-                        logger.info("Colum  [" + colName.toLowerCase() + "] : length[" + length + "] expected["
+                        logger.fine("Colum  [" + colName.toLowerCase() + "] : length[" + length + "] expected["
                                 + expectedSize + "]");
                         alterCols.put(colName.toLowerCase(), expectedSize);
                     }
                     listColsExpected.remove(colName.toLowerCase());
-                    // logger.info("Remove Colum  [" + colName.toLowerCase() + "] : list is now [ " + listColsExpected + "];");
+                    // logger.fine("Remove Colum  [" + colName.toLowerCase() + "] : list is now [ " + listColsExpected + "];");
                 }
                 // OK, create all missing column
                 for (final String col : listColsExpected.keySet()) {
@@ -848,7 +848,7 @@ public class BonitaProperties extends Properties {
                     executeAlterSql(con, "alter table " + cstSqlTableName + " alter column "
                             + getSqlField(col, alterCols.get(col), databaseProductName));
                 }
-                logger.info(loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : Correct ");
+                logger.fine(loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : Correct ");
             } else {
                 // create the table
                 final String createTableString = "create table " + cstSqlTableName + " ("
@@ -859,7 +859,7 @@ public class BonitaProperties extends Properties {
                         + getSqlField(cstSqlPropertiesValue, cstSqlPropertiesValueLength, databaseProductName) +","
                         + getSqlField(cstSqlPropertiesStream, -2, databaseProductName) 
                         + ")";
-                logger.info(loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : NOT EXIST : create it with script["+createTableString+"]");
+                logger.fine(loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : NOT EXIST : create it with script["+createTableString+"]");
                 executeAlterSql(con, createTableString);
 
             }
@@ -876,7 +876,7 @@ public class BonitaProperties extends Properties {
     }
 
     private void executeAlterSql(final Connection con, final String sqlRequest) throws SQLException {
-        logger.info(loggerLabel + "executeAlterSql : Execute [" + sqlRequest + "]");
+        logger.fine(loggerLabel + "executeAlterSql : Execute [" + sqlRequest + "]");
 
         final Statement stmt = con.createStatement();
         stmt.executeUpdate(sqlRequest);
@@ -996,7 +996,7 @@ public class BonitaProperties extends Properties {
             if (itemKeyValue.rsValue == null || itemKeyValue.rsValue.length() < cstSqlPropertiesValueLength) {
                 newCollectTooLargeKey.add(itemKeyValue);
             } else {
-                logger.info(loggerLabel + "decomposeTooLargeKey[" + itemKeyValue.rsKey + "] : size=["
+                logger.fine(loggerLabel + "decomposeTooLargeKey[" + itemKeyValue.rsKey + "] : size=["
                         + itemKeyValue.rsValue.length() + "]");
                 // too large : create multiple value
                 String value = itemKeyValue.rsValue;
@@ -1018,7 +1018,7 @@ public class BonitaProperties extends Properties {
     }
 
     private DataSource getDataSourceConnection() {
-        // logger.info(loggerLabel+".getDataSourceConnection() start");
+        // logger.fine(loggerLabel+".getDataSourceConnection() start");
 
         String msg = "";
         List<String> listDatasourceToCheck = new ArrayList<String>();
@@ -1028,15 +1028,15 @@ public class BonitaProperties extends Properties {
             listDatasourceToCheck.add(dataSourceString);
 
         for (String dataSourceString : listDatasourceToCheck) {
-            // logger.info(loggerLabel+".getDataSourceConnection() check["+dataSourceString+"]");
+            // logger.fine(loggerLabel+".getDataSourceConnection() check["+dataSourceString+"]");
             try {
                 final Context ctx = new InitialContext();
                 final DataSource dataSource = (DataSource) ctx.lookup(dataSourceString);
                 sqlDataSourceName = dataSourceString;
-                // logger.info(loggerLabel+".getDataSourceConnection() ["+dataSourceString+"] isOk");
+                // logger.fine(loggerLabel+".getDataSourceConnection() ["+dataSourceString+"] isOk");
                 return dataSource;
             } catch (NamingException e) {
-                // logger.info(loggerLabel+".getDataSourceConnection() error["+dataSourceString+"] : "+e.toString());
+                // logger.fine(loggerLabel+".getDataSourceConnection() error["+dataSourceString+"] : "+e.toString());
                 msg += "DataSource[" + dataSourceString + "] : error " + e.toString() + ";";
             }
         }
