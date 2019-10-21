@@ -1,8 +1,11 @@
 package org.bonitasoft.properties;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -10,6 +13,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Enumeration;
@@ -123,9 +127,20 @@ public class BonitaProperties extends Properties {
     /**
      * size is set under 4000 due to an oracle limitation of varchar to 4000
      */
+    private final static int cstSqlPropertiesValueLengthDatabase = 3500;
     private final static int cstSqlPropertiesValueLength = 3500;
 
     private boolean checkDatabaseAtFirstAccess = true;
+
+    /**
+     * If the string is too big, it is decompose in multiple value in the database.
+     * Note: 
+     *    - its compatible ascendant. Then, a key may be read in decomposed, then saved after in Stream
+     *    - to use the store( Collection ), the mechanism must be set to true
+     */
+    private boolean policyBigStringToStream=false;
+    
+  
 
     /**
      * when you want to access the BonitaProperties from a Page, you have a PageResourceProvider.
@@ -173,6 +188,7 @@ public class BonitaProperties extends Properties {
 
     // the constant is public then when a list of key is visible, the call know is this is a split key
     public final static String cstMarkerSplitTooLargeKey = "_#~_";
+    public final static String cstMarkerTooLargeToStream = "_##TooLargeToStream~_";
 
     /**
      * load all the properties informations.
@@ -241,14 +257,14 @@ public class BonitaProperties extends Properties {
                 if (itemKeyValue.rsKey.contains(cstMarkerSplitTooLargeKey)) {
                     collectTooLargeKey.add(itemKeyValue);
                 } else {
-                    dispatchKey(itemKeyValue);
+                    dispatchKeyAtLoading(itemKeyValue);
                 }
             }
 
             // if the collectTooLargeKey is not empty, recompose the key
             final List<ItemKeyValue> recomposeKey = recomposeTooLargekey(collectTooLargeKey);
             for (final ItemKeyValue itemKeyValue : recomposeKey) {
-                dispatchKey(itemKeyValue);
+                dispatchKeyAtLoading(itemKeyValue);
             }
             logger.fine(loggerLabel + ".Loadfrom  [" + mDomainName
                     + "] CheckDatabase[" + originCheckDatabaseAtFirstAccess
@@ -361,11 +377,16 @@ public class BonitaProperties extends Properties {
     }
 
     /**
+     * Dispath a Bonita Properties value in multiple properties, in order to save it
      * @param itemKeyValue
      */
-    private void dispatchKey(final ItemKeyValue itemKeyValue) {
+    private void dispatchKeyAtLoading(final ItemKeyValue itemKeyValue) {
         if (mName != null) {
-          if (itemKeyValue.rsStream!=null)
+            if (cstMarkerTooLargeToStream.equals(itemKeyValue.rsValue))
+            {               
+                setProperty(itemKeyValue.rsKey, streamToString( itemKeyValue.rsStream ));
+            }
+         else if (itemKeyValue.rsStream!=null)
             mPropertiesStream.put(itemKeyValue.rsKey, itemKeyValue.rsStream);
           else if (itemKeyValue.rsValue !=null)
             setProperty(itemKeyValue.rsKey, itemKeyValue.rsValue);
@@ -436,6 +457,15 @@ public class BonitaProperties extends Properties {
      * load() has to be done
      */
     public List<BEvent> store() {
+        return storeCollectionKeys( null );
+    }
+    /**
+     * only save the list of key. That's mean if you delete the key, you can give it in the collection, and properties does not have a new value then.
+     * @param listLimitedKeys
+     * @return
+     */
+    public List<BEvent> storeCollectionKeys( Collection<String> listLimitedKeys)
+    {
         final List<BEvent> listEvents = new ArrayList<BEvent>();
         logger.fine(loggerLabel + "store()");
 
@@ -468,47 +498,70 @@ public class BonitaProperties extends Properties {
             // be smart : does not delete the stream, only on change.
             sqlRequest +=" and "+cstSqlPropertiesStream +" is null";
             
-            // now, purge all Stream marked
+            if (listLimitedKeys!=null)
+            {
+                String filter="";
+                for (String key : listLimitedKeys)
+                {
+                    if (filter.length()>0)
+                        filter+=" or ";
+                    filter+=cstSqlPropertiesKey+" = '"+key+"' or "+cstSqlPropertiesKey+" like '"+key+cstMarkerSplitTooLargeKey+"%'";
+                    
+                }
+                sqlRequest += " and ("+ filter+")";
+            }
+            /*
+            boolean checkToDelete=false;
+            if (listLimitedKeys == null )
+                checkToDelete=true;
+            else
+            {
+                for(String key : listLimitedKeys)
+                    if (this.get( key ) ==null)
+                        logger.info(loggerLabel+"We delete the key "+key);
+            }
+              */
             
+            // now, purge all Stream marked
             stmt = con.createStatement();
 
-            logger.fine(loggerLabel + "Purge all with [" + sqlRequest + "]");
+            logger.info(loggerLabel + "Purge with [" + sqlRequest + "]");
             stmt.executeUpdate(sqlRequest);
 
             
             // now purge all stream marked
             sqlRequest = baseRequest+" and "+cstSqlPropertiesKey+" in (";
-            String listKey="";
+            String listKeysStream="";
             for (String key : mMarkPropertiesStreamToUpdate)
             {
-                listKey+=", '"+key+"' ";
+                listKeysStream+=", '"+key+"' ";
             }
-            if (listKey.length() > 0)
+            if (listKeysStream.length() > 0)
             {
-                listKey = listKey.substring(1);
-                sqlRequest += listKey+")";
+                listKeysStream = listKeysStream.substring(1);
+                sqlRequest += listKeysStream+")";
+                logger.info(loggerLabel + "Purge Stream with [" + sqlRequest + "]");                
                 stmt.executeUpdate(sqlRequest);
             }
-            
-            
+                        
             // now create all records
             Exception exceptionDuringRecord = null;
             if (mName != null) {
               // save the properties AND the mAllProperties which contains Stream
-              exceptionDuringRecord = insertSql(con, mName, mDomainName, null, null, this);
+              exceptionDuringRecord = insertSql(con, mName, mDomainName, null, null, this, listLimitedKeys );
               if (exceptionDuringRecord != null)
                 listEvents.add(
                         new BEvent(EventErrorAtStore, exceptionDuringRecord, "properties name;[" + mName + "]"));
               
 
-                exceptionDuringRecord = insertSql(con, mName, mDomainName, mPropertiesStream, mMarkPropertiesStreamToUpdate, null);
+                exceptionDuringRecord = insertSql(con, mName, mDomainName, mPropertiesStream, mMarkPropertiesStreamToUpdate, null,listLimitedKeys);
                 if (exceptionDuringRecord != null)
                     listEvents.add(
                             new BEvent(EventErrorAtStore, exceptionDuringRecord, "properties name;[" + mName + "]"));
 
             } else {
                 for (final String resourceName : mAllProperties.keySet()) {
-                    exceptionDuringRecord = insertSql(con, resourceName, mDomainName, null, null, mAllProperties.get(resourceName));
+                    exceptionDuringRecord = insertSql(con, resourceName, mDomainName, null, null, mAllProperties.get(resourceName),listLimitedKeys);
                     if (exceptionDuringRecord != null) {
                         listEvents.add(new BEvent(EventErrorAtStore, exceptionDuringRecord,
                                 "properties name;[" + mName + "]"));
@@ -572,7 +625,15 @@ public class BonitaProperties extends Properties {
     public void setCheckDatabase(final boolean checkDatabaseAtFirstAccess) {
         this.checkDatabaseAtFirstAccess = checkDatabaseAtFirstAccess;
     }
+    
+    public boolean getPolicyBigStringToStream() {
+        return policyBigStringToStream;
+    }
 
+    
+    public void setPolicyBigStringToStream(boolean policyBigStringToStream) {
+        this.policyBigStringToStream = policyBigStringToStream;
+    }
     /* ******************************************************************************** */
     /*                                                                                                                                                                  */
     /* Administration */
@@ -596,7 +657,7 @@ public class BonitaProperties extends Properties {
 
         for (Object key : this.keySet()) {
             String value = this.getProperty(key.toString());
-            logger.fine(loggerLabel + " key(" + key + ") value=["
+            logger.info(loggerLabel + " key(" + key + ") value=["
                     + (value == null ? null
                             : (value.toString().length() > 10 ? value.toString().substring(0, 10) + "..." : value))
                     + "]");
@@ -667,7 +728,8 @@ public class BonitaProperties extends Properties {
         final String domainName,
         final Hashtable<String,InputStream> property,
         final HashSet<String> markPropertiesStreamToUpdate,
-        @SuppressWarnings("rawtypes") final Hashtable record)
+        @SuppressWarnings("rawtypes") final Hashtable record,
+        Collection<String> listLimitedKeys)
 
     {
         /*
@@ -722,6 +784,19 @@ public class BonitaProperties extends Properties {
         try {
             pstmt = con.prepareStatement(sqlRequest);
             for (final ItemKeyValue itemKeyValue : listItems) {
+                if (listLimitedKeys!=null)
+                {
+                    boolean keyInList=false;
+                    for (String key : listLimitedKeys)
+                    {
+                        if (itemKeyValue.rsKey.equals(key) || itemKeyValue.rsKey.startsWith(key+cstMarkerSplitTooLargeKey))
+                            keyInList=true;   
+                    }
+                    // do not save the itemKeyValue if the jey is not in the list
+                    if (! keyInList)
+                        continue;
+                }
+                
                 whatToLog = "values [" + cstSqlResourceName + ":" + itemKeyValue.rsResourceName + "] "
                         + "," + cstSqldomainName + ":" + itemKeyValue.rsDomainName
                         + "," + cstSqlPropertiesKey + ":" + itemKeyValue.rsKey
@@ -736,8 +811,18 @@ public class BonitaProperties extends Properties {
 
                 pstmt.setString(5, itemKeyValue.rsValue);
                 pstmt.setBinaryStream(6, itemKeyValue.rsStream);
-                pstmt.executeUpdate();
-
+                try
+                {
+                    pstmt.executeUpdate();
+                    logger.info(loggerLabel+"Insert "+whatToLog);
+                }
+                catch(Exception e)
+                {
+                    logger.info(loggerLabel+"UNIQUE INDEX VIOLATION : Insert "+whatToLog);
+                    if (e.getMessage().startsWith("Unique index"))
+                        continue;
+                    throw e;
+                }
             }
 
         } catch (final SQLException e) {
@@ -799,7 +884,7 @@ public class BonitaProperties extends Properties {
                 listColsExpected.put(cstSqlResourceName.toLowerCase(), 200);
                 listColsExpected.put(cstSqldomainName.toLowerCase(), 500);
                 listColsExpected.put(cstSqlPropertiesKey.toLowerCase(), 200);
-                listColsExpected.put(cstSqlPropertiesValue.toLowerCase(), cstSqlPropertiesValueLength);
+                listColsExpected.put(cstSqlPropertiesValue.toLowerCase(), cstSqlPropertiesValueLengthDatabase);
                 listColsExpected.put(cstSqlPropertiesStream.toLowerCase(), -2);
 
                 final Map<String, Integer> alterCols = new HashMap<String, Integer>();
@@ -849,6 +934,15 @@ public class BonitaProperties extends Properties {
                             + getSqlField(col, alterCols.get(col), databaseProductName));
                 }
                 logger.fine(loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : Correct ");
+                // add the constraint
+                /*
+                String constraints = "alter table "+ cstSqlTableName + " add constraint uniq_propkey unique ("+
+                        cstSqlTenantId+","
+                        + cstSqlResourceName+","
+                        + cstSqldomainName+","
+                        + cstSqlPropertiesKey+")";
+                 executeAlterSql(con, constraints);
+                 */
             } else {
                 // create the table
                 final String createTableString = "create table " + cstSqlTableName + " ("
@@ -856,11 +950,19 @@ public class BonitaProperties extends Properties {
                         + getSqlField(cstSqlResourceName, 200, databaseProductName) + ", "
                         + getSqlField(cstSqldomainName, 500, databaseProductName) + ", "
                         + getSqlField(cstSqlPropertiesKey, 200, databaseProductName) + ", "
-                        + getSqlField(cstSqlPropertiesValue, cstSqlPropertiesValueLength, databaseProductName) +","
+                        + getSqlField(cstSqlPropertiesValue, cstSqlPropertiesValueLengthDatabase, databaseProductName) +","
                         + getSqlField(cstSqlPropertiesStream, -2, databaseProductName) 
                         + ")";
                 logger.fine(loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : NOT EXIST : create it with script["+createTableString+"]");
                 executeAlterSql(con, createTableString);
+                
+                /* String constraints = "alter table "+ cstSqlTableName + " add constraint uniq_propkey unique ("+
+                        cstSqlTenantId+","
+                        + cstSqldomainName+","
+                        + cstSqlResourceName+","
+                        + cstSqlPropertiesKey+")";
+                executeAlterSql(con, constraints);
+                */
 
             }
         } catch (final SQLException e) {
@@ -969,15 +1071,21 @@ public class BonitaProperties extends Properties {
         });
 
         // Now, complete
+        String analyse="";
         ItemKeyValue lastKeyValue = null;
         final List<ItemKeyValue> collapseTooLargeKey = new ArrayList<ItemKeyValue>();
         for (final ItemKeyValue itemKeyValue : collectTooLargeKey) {
+            // a new key ?
             if (lastKeyValue == null || !lastKeyValue.baseKey.equals(itemKeyValue.baseKey)) {
+                if (analyse.length()>0)
+                    logger.info("BonitaPropertiesMerge="+analyse);
+                analyse= itemKeyValue.baseKey+"=["+itemKeyValue.rsValue+"],";
                 lastKeyValue = itemKeyValue;
                 lastKeyValue.rsKey = lastKeyValue.baseKey;
                 collapseTooLargeKey.add(lastKeyValue);
             } else {
                 lastKeyValue.rsValue += itemKeyValue.rsValue;
+                analyse += "["+itemKeyValue.rsValue+"],";
             }
 
         }
@@ -988,7 +1096,6 @@ public class BonitaProperties extends Properties {
      * decompose
      *
      * @param collectTooLargeKey
-     * @return
      */
     protected List<ItemKeyValue> decomposeTooLargekey(final List<ItemKeyValue> collectTooLargeKey) {
         final List<ItemKeyValue> newCollectTooLargeKey = new ArrayList<ItemKeyValue>();
@@ -1000,6 +1107,17 @@ public class BonitaProperties extends Properties {
                         + itemKeyValue.rsValue.length() + "]");
                 // too large : create multiple value
                 String value = itemKeyValue.rsValue;
+                
+                if (policyBigStringToStream) {
+                    final ItemKeyValue streamKeyValue = ItemKeyValue.getInstance(itemKeyValue);
+                    streamKeyValue.rsValue = cstMarkerTooLargeToStream;
+                    streamKeyValue.rsStream = stringToStream(value);
+                    newCollectTooLargeKey.add(streamKeyValue);
+                }
+                else
+                {
+                    // decompose in multiple key
+                    String analyse="Orig["+value+"], result=";
                 int count = 0;
                 while (value.length() > 0) {
                     final ItemKeyValue partialKeyValue = ItemKeyValue.getInstance(itemKeyValue);
@@ -1011,6 +1129,9 @@ public class BonitaProperties extends Properties {
                     value = value.length() > cstSqlPropertiesValueLength - 1
                             ? value.substring(cstSqlPropertiesValueLength - 1) : "";
                     count++;
+                    analyse+=partialKeyValue.rsKey+"=["+partialKeyValue.rsValue+"],";
+                }
+                logger.info("BonitaPropertiesSplit="+analyse);
                 }
             }
         }
@@ -1044,4 +1165,31 @@ public class BonitaProperties extends Properties {
         return null;
     }
 
+    
+    private String streamToString( InputStream stream) 
+    {
+        try
+        {
+        ByteArrayOutputStream result = new ByteArrayOutputStream();
+        byte[] buffer = new byte[1024];
+        int length;
+        while ((length = stream.read(buffer)) != -1) {
+            result.write(buffer, 0, length);
+        }
+        return result.toString(StandardCharsets.UTF_8.name());
+        }catch(Exception e) {
+        return null;
+        }
+    }
+    
+    private InputStream stringToStream( String value) 
+    {
+        try
+        {
+                InputStream result = new ByteArrayInputStream(value.getBytes(StandardCharsets.UTF_8));
+                return result;
+       }catch(Exception e) {
+        return null;
+       }
+    }
 }
