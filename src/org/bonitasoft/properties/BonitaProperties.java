@@ -1,4 +1,3 @@
-                final Context ctx = new InitialContext();
 package org.bonitasoft.properties;
 
 import java.io.ByteArrayInputStream;
