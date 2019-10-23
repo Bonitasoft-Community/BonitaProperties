@@ -44,7 +44,7 @@ import org.bonitasoft.web.extension.page.PageResourceProvider;
  */
 public class BonitaProperties extends Properties {
 
-    private static Logger logger = Logger.getLogger("org.bonitasoft.ext.properties");
+    private static Logger logger = Logger.getLogger(BonitaProperties.class.getName());
 
     private static BEvent EventErrorAtLoad = new BEvent("org.bonitasoft.ext.properties", 1, Level.ERROR,
             "Error during loading properties", "Check Exception ",
@@ -76,6 +76,7 @@ public class BonitaProperties extends Properties {
 
     private Long mTenantId;
 
+    private java.util.logging.Level logLevel = java.util.logging.Level.FINE;
     /*
      * in case of an administration usage, all properties has to be load
      * Structure : key is NAME
@@ -236,7 +237,7 @@ public class BonitaProperties extends Properties {
                 }
             }
 
-            //logger.fine("sqlRequest[" + sqlRequest + "]");
+            logger.log(logLevel,"sqlRequest[" + sqlRequest + "]");
             mPropertiesStream = new Hashtable<String, InputStream>();
             mMarkPropertiesStreamToUpdate=new HashSet<String>();
             
@@ -266,7 +267,7 @@ public class BonitaProperties extends Properties {
             for (final ItemKeyValue itemKeyValue : recomposeKey) {
                 dispatchKeyAtLoading(itemKeyValue);
             }
-            logger.fine(loggerLabel + ".Loadfrom  [" + mDomainName
+            logger.log(logLevel,loggerLabel + ".Loadfrom  [" + mDomainName
                     + "] CheckDatabase[" + originCheckDatabaseAtFirstAccess
                     + "] name[" + mName
                     + "] " + (mName != null ? "*LoadProperties*" : "*LoadALLPROPERTIES*")
@@ -457,6 +458,8 @@ public class BonitaProperties extends Properties {
      * load() has to be done
      */
     public List<BEvent> store() {
+        logger.log(logLevel, loggerLabel + "store()");
+
         return storeCollectionKeys( null );
     }
     /**
@@ -467,7 +470,7 @@ public class BonitaProperties extends Properties {
     public List<BEvent> storeCollectionKeys( Collection<String> listLimitedKeys)
     {
         final List<BEvent> listEvents = new ArrayList<BEvent>();
-        logger.fine(loggerLabel + "store()");
+        logger.log(logLevel,loggerLabel + "storeCollectionKeys()");
 
         Statement stmt = null;
         String sqlRequest = null;
@@ -525,7 +528,7 @@ public class BonitaProperties extends Properties {
             // now, purge all Stream marked
             stmt = con.createStatement();
 
-            logger.info(loggerLabel + "Purge with [" + sqlRequest + "]");
+            logger.log(logLevel,loggerLabel + "Purge with [" + sqlRequest + "]");
             stmt.executeUpdate(sqlRequest);
 
             
@@ -540,7 +543,7 @@ public class BonitaProperties extends Properties {
             {
                 listKeysStream = listKeysStream.substring(1);
                 sqlRequest += listKeysStream+")";
-                logger.info(loggerLabel + "Purge Stream with [" + sqlRequest + "]");                
+                logger.log(logLevel,loggerLabel + "Purge Stream with [" + sqlRequest + "]");                
                 stmt.executeUpdate(sqlRequest);
             }
                         
@@ -571,10 +574,10 @@ public class BonitaProperties extends Properties {
             }
             // maybe the database are in autocommit mode ? In that situation, do not commit
             if (con.getAutoCommit()) {
-                logger.fine(loggerLabel + " Database are in Autocommit");
+                logger.log(logLevel,loggerLabel + " Database are in Autocommit");
             } else {
                 if (exceptionDuringRecord != null) {
-                    logger.fine(loggerLabel + " Rollback");
+                    logger.log(logLevel,loggerLabel + " Rollback");
                     con.rollback();
                 } else {
                     con.commit();
@@ -634,6 +637,10 @@ public class BonitaProperties extends Properties {
     public void setPolicyBigStringToStream(boolean policyBigStringToStream) {
         this.policyBigStringToStream = policyBigStringToStream;
     }
+    public void setLogLevel( java.util.logging.Level logLevel ) 
+    {
+        this.logLevel = logLevel;
+    }
     /* ******************************************************************************** */
     /*                                                                                                                                                                  */
     /* Administration */
@@ -641,14 +648,14 @@ public class BonitaProperties extends Properties {
     /*                                                                                  */
     /* ******************************************************************************** */
     public void traceInLog() {
-        logger.fine(loggerLabel + "trace()");
+        logger.log(logLevel, loggerLabel + "trace()");
         if (mAllProperties != null)
             for (String domaineName : mAllProperties.keySet()) {
                 Map<String, Object> subProperties = mAllProperties.get(domaineName);
                 for (String key : mAllProperties.keySet()) {
                     Object value = subProperties.get(key);
 
-                    logger.fine(loggerLabel + " allProperties[" + domaineName + "] .key(" + key + ") value=["
+                    logger.log(logLevel,loggerLabel + " allProperties[" + domaineName + "] .key(" + key + ") value=["
                             + (value == null ? null : (value.toString().length() > 10
                                     ? value.toString().substring(0, 10) + "..." : value))
                             + "]");
@@ -657,7 +664,7 @@ public class BonitaProperties extends Properties {
 
         for (Object key : this.keySet()) {
             String value = this.getProperty(key.toString());
-            logger.info(loggerLabel + " key(" + key + ") value=["
+            logger.log(logLevel,loggerLabel + " key(" + key + ") value=["
                     + (value == null ? null
                             : (value.toString().length() > 10 ? value.toString().substring(0, 10) + "..." : value))
                     + "]");
@@ -814,11 +821,11 @@ public class BonitaProperties extends Properties {
                 try
                 {
                     pstmt.executeUpdate();
-                    logger.info(loggerLabel+"Insert "+whatToLog);
+                    logger.log(logLevel,loggerLabel+"Insert "+whatToLog);
                 }
                 catch(Exception e)
                 {
-                    logger.info(loggerLabel+"UNIQUE INDEX VIOLATION : Insert "+whatToLog);
+                    logger.log(logLevel,loggerLabel+"UNIQUE INDEX VIOLATION : Insert "+whatToLog);
                     if (e.getMessage().startsWith("Unique index"))
                         continue;
                     throw e;
@@ -829,7 +836,7 @@ public class BonitaProperties extends Properties {
             final StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
-            logger.fine("insertSql[" + whatToLog + "] at " + exceptionDetails);
+            logger.log(logLevel,"insertSql[" + whatToLog + "] at " + exceptionDetails);
 
             return e;
         } finally {
@@ -907,17 +914,17 @@ public class BonitaProperties extends Properties {
                     final Integer expectedSize = listColsExpected.containsKey(colName.toLowerCase())
                             ? listColsExpected.get(colName.toLowerCase()) : null;
                     if (expectedSize == null) {
-                        logger.fine("Colum  [" + colName.toLowerCase() + "] : does not exist in [ " + listColsExpected
+                        logger.log(logLevel,"Colum  [" + colName.toLowerCase() + "] : does not exist in [ " + listColsExpected
                                 + "];");
                         continue; // this columns is new
                     }
                     if (length < expectedSize) {
-                        logger.fine("Colum  [" + colName.toLowerCase() + "] : length[" + length + "] expected["
+                        logger.log(logLevel,"Colum  [" + colName.toLowerCase() + "] : length[" + length + "] expected["
                                 + expectedSize + "]");
                         alterCols.put(colName.toLowerCase(), expectedSize);
                     }
                     listColsExpected.remove(colName.toLowerCase());
-                    // logger.fine("Remove Colum  [" + colName.toLowerCase() + "] : list is now [ " + listColsExpected + "];");
+                    logger.log(logLevel,"Remove Colum  [" + colName.toLowerCase() + "] : list is now [ " + listColsExpected + "];");
                 }
                 // OK, create all missing column
                 for (final String col : listColsExpected.keySet()) {
@@ -933,7 +940,7 @@ public class BonitaProperties extends Properties {
                     executeAlterSql(con, "alter table " + cstSqlTableName + " alter column "
                             + getSqlField(col, alterCols.get(col), databaseProductName));
                 }
-                logger.fine(loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : Correct ");
+                logger.log(logLevel,loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : Correct ");
                 // add the constraint
                 /*
                 String constraints = "alter table "+ cstSqlTableName + " add constraint uniq_propkey unique ("+
@@ -953,7 +960,7 @@ public class BonitaProperties extends Properties {
                         + getSqlField(cstSqlPropertiesValue, cstSqlPropertiesValueLengthDatabase, databaseProductName) +","
                         + getSqlField(cstSqlPropertiesStream, -2, databaseProductName) 
                         + ")";
-                logger.fine(loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : NOT EXIST : create it with script["+createTableString+"]");
+                logger.log(logLevel,loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : NOT EXIST : create it with script["+createTableString+"]");
                 executeAlterSql(con, createTableString);
                 
                 /* String constraints = "alter table "+ cstSqlTableName + " add constraint uniq_propkey unique ("+
@@ -978,7 +985,7 @@ public class BonitaProperties extends Properties {
     }
 
     private void executeAlterSql(final Connection con, final String sqlRequest) throws SQLException {
-        logger.fine(loggerLabel + "executeAlterSql : Execute [" + sqlRequest + "]");
+        logger.log(logLevel,loggerLabel + "executeAlterSql : Execute [" + sqlRequest + "]");
 
         final Statement stmt = con.createStatement();
         stmt.executeUpdate(sqlRequest);
@@ -1078,7 +1085,7 @@ public class BonitaProperties extends Properties {
             // a new key ?
             if (lastKeyValue == null || !lastKeyValue.baseKey.equals(itemKeyValue.baseKey)) {
                 if (analyse.length()>0)
-                    logger.info("BonitaPropertiesMerge="+analyse);
+                    logger.log(logLevel,"BonitaPropertiesMerge="+analyse);
                 analyse= itemKeyValue.baseKey+"=["+itemKeyValue.rsValue+"],";
                 lastKeyValue = itemKeyValue;
                 lastKeyValue.rsKey = lastKeyValue.baseKey;
@@ -1103,7 +1110,7 @@ public class BonitaProperties extends Properties {
             if (itemKeyValue.rsValue == null || itemKeyValue.rsValue.length() < cstSqlPropertiesValueLength) {
                 newCollectTooLargeKey.add(itemKeyValue);
             } else {
-                logger.fine(loggerLabel + "decomposeTooLargeKey[" + itemKeyValue.rsKey + "] : size=["
+                logger.log(logLevel,loggerLabel + "decomposeTooLargeKey[" + itemKeyValue.rsKey + "] : size=["
                         + itemKeyValue.rsValue.length() + "]");
                 // too large : create multiple value
                 String value = itemKeyValue.rsValue;
@@ -1131,7 +1138,7 @@ public class BonitaProperties extends Properties {
                     count++;
                     analyse+=partialKeyValue.rsKey+"=["+partialKeyValue.rsValue+"],";
                 }
-                logger.info("BonitaPropertiesSplit="+analyse);
+                logger.log(logLevel,"BonitaPropertiesSplit="+analyse);
                 }
             }
         }
