@@ -12,6 +12,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -101,6 +102,8 @@ public class BonitaProperties extends Properties {
     private Hashtable<String, Hashtable<String, Object>> mAllProperties;
 
    
+    
+
     private Hashtable<String, InputStream> mPropertiesStream = new Hashtable<String,InputStream>();
     /** we mark in this set all key which change (delete, update, insert). Then, at update, we can do the correct change, not all.
      * 
@@ -132,6 +135,7 @@ public class BonitaProperties extends Properties {
     private final static int cstSqlPropertiesValueLength = 3500;
 
     private boolean checkDatabaseAtFirstAccess = true;
+    private boolean logCheckDatabaseAtFirstAccess = false;
 
     /**
      * If the string is too big, it is decompose in multiple value in the database.
@@ -629,6 +633,16 @@ public class BonitaProperties extends Properties {
         this.checkDatabaseAtFirstAccess = checkDatabaseAtFirstAccess;
     }
     
+
+    public boolean isLogCheckDatabaseAtFirstAccess() {
+        return logCheckDatabaseAtFirstAccess;
+    }
+
+    
+    public void setLogCheckDatabaseAtFirstAccess(boolean logCheckDatabaseAtFirstAccess) {
+        this.logCheckDatabaseAtFirstAccess = logCheckDatabaseAtFirstAccess;
+    }
+    
     public boolean getPolicyBigStringToStream() {
         return policyBigStringToStream;
     }
@@ -695,6 +709,7 @@ public class BonitaProperties extends Properties {
      * @return
      */
     public List<BEvent> checkDatabase() {
+       
         List<BEvent> listEvents = new ArrayList<BEvent>();
         Connection con = null;
         try {
@@ -811,13 +826,19 @@ public class BonitaProperties extends Properties {
                         + "," + cstSqlPropertiesStream + ":" + (itemKeyValue.rsStream ==null ? "null" : "xx") 
                         + "]";
 
-                pstmt.setLong(1, mTenantId == null ? 1L : mTenantId);
-                pstmt.setString(2, itemKeyValue.rsResourceName);
-                pstmt.setString(3, itemKeyValue.rsDomainName);
-                pstmt.setString(4, itemKeyValue.rsKey);
+                int index=1;
+                pstmt.setLong( index++, mTenantId == null ? 1L : mTenantId);
+                pstmt.setString(index++, itemKeyValue.rsResourceName);
+                pstmt.setString(index++, itemKeyValue.rsDomainName);
+                pstmt.setString(index++, itemKeyValue.rsKey);
 
-                pstmt.setString(5, itemKeyValue.rsValue);
-                pstmt.setBinaryStream(6, itemKeyValue.rsStream);
+                // conditionnal
+                pstmt.setString(index++, itemKeyValue.rsValue);
+                
+                if (itemKeyValue.rsStream == null)
+                    pstmt.setNull(index++, Types.BINARY); 
+                else
+                    pstmt.setBinaryStream(index++, itemKeyValue.rsStream);
                 try
                 {
                     pstmt.executeUpdate();
@@ -868,7 +889,11 @@ public class BonitaProperties extends Properties {
     private List<BEvent> checkCreateDatase(final Connection con) {
 
         final List<BEvent> listEvents = new ArrayList<BEvent>();
-
+        String logAnalysis = "CheckDatabase;";
+        java.util.logging.Level logLevelAnalysis=java.util.logging.Level.FINE;
+        if (logCheckDatabaseAtFirstAccess)
+            logLevelAnalysis=java.util.logging.Level.INFO;
+        
         try {
             final DatabaseMetaData dbm = con.getMetaData();
 
@@ -883,8 +908,10 @@ public class BonitaProperties extends Properties {
                 final String tableName = tables.getString("TABLE_NAME");
                 if (tableName.equalsIgnoreCase(cstSqlTableName)) {
                     exist = true;
+                    break;
                 }
             }
+            logAnalysis+="Table ["+cstSqlTableName+"] exist? "+exist+";";
             if (exist) {
                 final Map<String, Integer> listColsExpected = new HashMap<String, Integer>();
                 listColsExpected.put(cstSqlTenantId.toLowerCase(), -1);
@@ -914,33 +941,39 @@ public class BonitaProperties extends Properties {
                     final Integer expectedSize = listColsExpected.containsKey(colName.toLowerCase())
                             ? listColsExpected.get(colName.toLowerCase()) : null;
                     if (expectedSize == null) {
-                        logger.log(logLevel,"Colum  [" + colName.toLowerCase() + "] : does not exist in [ " + listColsExpected
-                                + "];");
+                        logAnalysis+="Colum  [" + colName.toLowerCase() + "] : does not exist in [ " + listColsExpected
+                                + "];";
                         continue; // this columns is new
                     }
                     if (length < expectedSize) {
-                        logger.log(logLevel,"Colum  [" + colName.toLowerCase() + "] : length[" + length + "] expected["
-                                + expectedSize + "]");
+                        logAnalysis+="Colum  [" + colName.toLowerCase() + "] : length[" + length + "] expected["
+                                + expectedSize + "];";
                         alterCols.put(colName.toLowerCase(), expectedSize);
                     }
                     listColsExpected.remove(colName.toLowerCase());
-                    logger.log(logLevel,"Remove Colum  [" + colName.toLowerCase() + "] : list is now [ " + listColsExpected + "];");
+                    // logAnalysis+="Remove Colum[" + colName.toLowerCase() + "] : list is now [ " + listColsExpected + "];";
                 }
                 // OK, create all missing column
                 for (final String col : listColsExpected.keySet()) {
-                    executeAlterSql(con, "alter table " + cstSqlTableName + " add  "
-                            + getSqlField(col, listColsExpected.get(col), databaseProductName));
-                    if (cstSqlTenantId.equalsIgnoreCase(col)) {
-                        executeAlterSql(con, "update  " + cstSqlTableName + " set " + cstSqlTenantId + "=1");
-                    }
+                    String sqlRequest = "alter table " + cstSqlTableName + " add  "+ getSqlField(col, listColsExpected.get(col), databaseProductName);
+                    logAnalysis+=sqlRequest+";";
 
+                    executeAlterSql(con, sqlRequest);
+                    if (cstSqlTenantId.equalsIgnoreCase(col)) {
+                        sqlRequest="update  " + cstSqlTableName + " set " + cstSqlTenantId + "=1";
+                        logAnalysis+=sqlRequest+";";
+                        executeAlterSql(con, sqlRequest);
+                    }
                 }
                 // all change operation
                 for (final String col : alterCols.keySet()) {
-                    executeAlterSql(con, "alter table " + cstSqlTableName + " alter column "
-                            + getSqlField(col, alterCols.get(col), databaseProductName));
+                    String sqlRequest= "alter table " + cstSqlTableName + " alter column "
+                            + getSqlField(col, alterCols.get(col), databaseProductName);
+                    logAnalysis+=sqlRequest+";";
+
+                    executeAlterSql(con, sqlRequest);
                 }
-                logger.log(logLevel,loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : Correct ");
+                logAnalysis+="CheckCreateTable [" + cstSqlTableName + "] : Correct ";
                 // add the constraint
                 /*
                 String constraints = "alter table "+ cstSqlTableName + " add constraint uniq_propkey unique ("+
@@ -960,7 +993,7 @@ public class BonitaProperties extends Properties {
                         + getSqlField(cstSqlPropertiesValue, cstSqlPropertiesValueLengthDatabase, databaseProductName) +","
                         + getSqlField(cstSqlPropertiesStream, -2, databaseProductName) 
                         + ")";
-                logger.log(logLevel,loggerLabel + "CheckCreateTable [" + cstSqlTableName + "] : NOT EXIST : create it with script["+createTableString+"]");
+                logAnalysis+= "CheckCreateTable [" + cstSqlTableName + "] : NOT EXIST : create it with script["+createTableString+"]";
                 executeAlterSql(con, createTableString);
                 
                 /* String constraints = "alter table "+ cstSqlTableName + " add constraint uniq_propkey unique ("+
@@ -976,11 +1009,14 @@ public class BonitaProperties extends Properties {
             final StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
-            logger.severe(loggerLabel + "CheckCreateTableError during checkCreateDatase properties [" + mName + "] : "
-                    + e.toString() + " : " + exceptionDetails);
+            logLevelAnalysis=java.util.logging.Level.SEVERE;
+            
+            logAnalysis+=" ERROR during checkCreateDatase properties [" + mName + "] : "
+                    + e.toString() + " : " + exceptionDetails;
             listEvents.add(new BEvent(EventCreationDatabase, e, "properties name;[" + mName + "]"));
 
         }
+        logger.log(logLevelAnalysis, logAnalysis);
         return listEvents;
     }
 
@@ -1023,7 +1059,7 @@ public class BonitaProperties extends Properties {
           if ("oracle".equalsIgnoreCase(databaseProductName)) {
               return colName + " BLOB ";
           } else if ("PostgreSQL".equalsIgnoreCase(databaseProductName)) {
-              return colName + " blob bytea";
+              return colName + " bytea";
           } else if ("H2".equalsIgnoreCase(databaseProductName)) {
               return colName + " BLOB";
           }
