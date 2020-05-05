@@ -31,7 +31,8 @@ import com.google.gson.Gson;
 
 public class AccessProperties {
 
-    private static Logger logger = Logger.getLogger("org.bonitasoft.ext.properties");
+    private static Logger logger = Logger.getLogger(AccessProperties.class.getName());
+    private final String loggerLabel = "BonitaProperties_2.3.0:";
 
     private Long mTenantId;
 

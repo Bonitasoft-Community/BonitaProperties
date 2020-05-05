@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.bonitasoft.properties</groupId>
   <artifactId>bonita-properties</artifactId>
-  <version>2.1.1</version>
+  <version>2.3.0</version>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <bonita.version>7.6.3</bonita.version>
@@ -52,6 +52,77 @@
           <target>1.7</target>
         </configuration>
       </plugin>
-    </plugins>
-  </build>
+   
+			<!-- ******************** Copy JAR files under bonitamavenrepository **************** -->
+			<plugin>
+				<groupId>org.codehaus.groovy.maven</groupId>
+				<artifactId>gmaven-plugin</artifactId>
+				<executions>
+					<execution>
+						<phase>package</phase>
+						<goals>
+							<goal>execute</goal>
+						</goals>
+						<configuration>
+							<source>
+								import java.nio.file.*;
+
+								String groupIdPath = "${project.groupId}".replace('.', '/');
+
+								String fileName = "${artifactId}-${version}.jar";
+								Path destPath = Paths.get( "../bonitamavenrepository/${groupIdPath}/${artifactId}/${version}" );
+
+								Path sourceJarFile = Paths.get("target/"+fileName);
+								Path destJarFile = Paths.get( destPath.toString()+"/"+fileName);
+								copyFile( sourceJarFile, destJarFile);
+
+								Path sourcePom = Paths.get("pom.xml" );
+								Path destPom = Paths.get( destPath.toString()+"/${artifactId}-${version}.pom" );
+								copyFile( sourcePom, destPom);
+								return;
+
+								public void copyFile( Path sourcePath, Path destinationPath ) {
+									try {
+										Path parentPath = destinationPath.getParent();
+										println(" Create Directory:"+parentPath.toString());
+										Files.createDirectories(parentPath);
+		
+		
+										try {
+											if (destinationPath.toFile().exists()) {
+												println(" Delete existing file:"+destinationPath.toString());
+												Files.delete(destinationPath);
+											}
+										} catch(Exception e) {
+											println(" Error during deletion "+e.getMessage());
+										}
+										println(" Copy:"+sourcePath+" =>"+destinationPath);
+		
+	
+										def file = sourcePath.toFile();
+										def newFile = destinationPath.toFile();
+										Files.copy(file.toPath(), newFile.toPath());
+	
+									} catch(Exception e )
+									{
+										println("Exception "+e.getMessage());
+									}
+								}
+
+
+
+
+							</source>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
+
+		</plugins>
+	</build>
+    
+    
+    
+  
 </project>
