@@ -44,7 +44,7 @@ import org.bonitasoft.web.extension.page.PageResourceProvider;
 public class BonitaProperties extends Properties {
 
     private static Logger logger = Logger.getLogger(BonitaProperties.class.getName());
-    private final String loggerLabel = "BonitaProperties_2.3.0:";
+    private final String loggerLabel = "BonitaProperties_2.4.0:";
 
     private static BEvent EventErrorAtLoad = new BEvent(BonitaProperties.class.getName(), 1, Level.ERROR,
             "Error during loading properties", "Check Exception ",
@@ -105,9 +105,15 @@ public class BonitaProperties extends Properties {
      */
     private HashSet<String> mMarkPropertiesStreamToUpdate = new HashSet<String>();
 
-    private String[] listDataSources = new String[] { "java:/comp/env/bonitaSequenceManagerDS", // tomcat
-            "java:jboss/datasources/bonitaSequenceManagerDS" }; // jboss 
-
+    /*private String[] listDataSources = new String[] { "java:/comp/env/bonitaSequenceManagerDS", // tomcat
+            "java:jboss/datasources/bonitaSequenceManagerDS" }; // jboss
+            */
+    
+    
+    private String[] listDataSources = new String[] { "java:/comp/env/bonitaDS", // 7.8
+            "java:/comp/env/RawBonitaDS", // 7.
+            "java:/comp/env/bonitaSequenceManagerDS", // tomcat
+    "java:jboss/datasources/bonitaSequenceManagerDS" }; // jboss
     /**
      * save the datasource used
      */
