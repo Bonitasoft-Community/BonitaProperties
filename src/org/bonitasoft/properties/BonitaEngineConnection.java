@@ -28,11 +28,20 @@ public class BonitaEngineConnection {
     private final static Logger logger = Logger.getLogger(BonitaEngineConnection.class.getName());
     private static final String loggerLabel = "BonitaProperties_2.3.0:";
 
-    private static List<String> listDataSources = Arrays.asList("java:/comp/env/bonitaSequenceManagerDS",
-            "java:jboss/datasources/bonitaSequenceManagerDS");
+    /*
+     * private String[] listDataSources = new String[] { "java:/comp/env/bonitaSequenceManagerDS", // tomcat
+     * "java:jboss/datasources/bonitaSequenceManagerDS" }; // jboss
+     */
+
+    // the datasource "java:/comp/env/bonitaDS", can't be used : it's under the control of Bitronix which not allow request.
+    protected final static String[] listDataSources = new String[] { 
+            "java:/comp/env/RawBonitaDS", // 7.
+            "java:/comp/env/bonitaSequenceManagerDS", // tomcat
+            "java:jboss/datasources/bonitaSequenceManagerDS" }; // jboss
 
     /**
      * execute a request
+     * 
      * @param sqlRequest
      * @param parameters
      * @return
@@ -46,14 +55,14 @@ public class BonitaEngineConnection {
             for (int i = 0; i < parameters.size(); i++)
                 pstmt.setObject(i + 1, parameters.get(i));
             rs = pstmt.executeQuery();
-           
+
             ResultSetMetaData rsMeta = pstmt.getMetaData();
             while (rs.next()) {
                 Map<String, Object> record = new HashMap<>();
                 for (int columnIndex = 1; columnIndex <= rsMeta.getColumnCount(); columnIndex++)
                     record.put(rsMeta.getColumnLabel(columnIndex).toUpperCase(), rs.getObject(columnIndex));
                 listResult.add(record);
-                if (listResult.size()>=maximumResult)
+                if (listResult.size() >= maximumResult)
                     return listResult;
             }
             return listResult;

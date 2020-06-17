@@ -14,6 +14,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -46,15 +47,15 @@ public class BonitaProperties extends Properties {
     private static Logger logger = Logger.getLogger(BonitaProperties.class.getName());
     private final String loggerLabel = "BonitaProperties_2.4.0:";
 
-    private static BEvent EventErrorAtLoad = new BEvent(BonitaProperties.class.getName(), 1, Level.ERROR,
+    private static BEvent eventErrorAtLoad = new BEvent(BonitaProperties.class.getName(), 1, Level.ERROR,
             "Error during loading properties", "Check Exception ",
             "The properties are empty", "Check Exception");
 
-    private static BEvent EventCreationDatabase = new BEvent(BonitaProperties.class.getName(), 2, Level.ERROR,
+    private static BEvent eventCreationDatabase = new BEvent(BonitaProperties.class.getName(), 2, Level.ERROR,
             "Error during creation the table in the database", "Check Exception ",
             "The properties will not work (no read, no save)", "Check Exception");
 
-    private static BEvent EventErrorAtStore = new BEvent(BonitaProperties.class.getName(), 3, Level.ERROR,
+    private static BEvent eventErrorAtStore = new BEvent(BonitaProperties.class.getName(), 3, Level.ERROR,
             "Error during saving the table in the database",
             "Check Exception ",
             "The properties are not saved", "Check Exception");
@@ -105,15 +106,7 @@ public class BonitaProperties extends Properties {
      */
     private HashSet<String> mMarkPropertiesStreamToUpdate = new HashSet<String>();
 
-    /*private String[] listDataSources = new String[] { "java:/comp/env/bonitaSequenceManagerDS", // tomcat
-            "java:jboss/datasources/bonitaSequenceManagerDS" }; // jboss
-            */
-    
-    
-    private String[] listDataSources = new String[] { "java:/comp/env/bonitaDS", // 7.8
-            "java:/comp/env/RawBonitaDS", // 7.
-            "java:/comp/env/bonitaSequenceManagerDS", // tomcat
-    "java:jboss/datasources/bonitaSequenceManagerDS" }; // jboss
+   
     /**
      * save the datasource used
      */
@@ -246,8 +239,8 @@ public class BonitaProperties extends Properties {
             }
 
             logger.log(logLevel, "sqlRequest[" + sqlRequest + "]");
-            mPropertiesStream = new Hashtable<String, InputStream>();
-            mMarkPropertiesStreamToUpdate = new HashSet<String>();
+            mPropertiesStream = new Hashtable<>();
+            mMarkPropertiesStreamToUpdate = new HashSet<>();
 
             pstmt = con.prepareStatement(sqlRequest);
             for (int i = 0; i < listSqlParameters.size(); i++) {
@@ -295,7 +288,7 @@ public class BonitaProperties extends Properties {
             logger.severe(loggerLabel + ".loadDomainName Error during load properties [" + mName + "] : " + e.toString()
                     + " : " + exceptionDetails);
 
-            listEvents.add(new BEvent(EventErrorAtLoad, e, "properties name;[" + mName + "]"));
+            listEvents.add(new BEvent(eventErrorAtLoad, e, "properties name;[" + mName + "]"));
         } finally {
             if (rs != null) {
                 try {
@@ -494,7 +487,7 @@ public class BonitaProperties extends Properties {
             logger.log(logLevel, loggerLabel + "storeCollectionKeys()");
 
             Statement stmt = null;
-            String sqlRequest = null;
+            StringBuilder sqlRequest = new StringBuilder();
             Connection con = null;
             try {
                 final DataSource dataSource = getDataSourceConnection();
@@ -505,31 +498,31 @@ public class BonitaProperties extends Properties {
 
                 con = dataSource.getConnection();
 
-                sqlRequest = "delete from " + cstSqlTableName + " where  " + cstSqlTenantId + "= "
-                        + (mTenantId == null ? 1 : mTenantId);
+                sqlRequest.append( "delete from " + cstSqlTableName + " where  " + cstSqlTenantId + "= "
+                        + (mTenantId == null ? 1 : mTenantId));
                 if (mName != null) {
-                    sqlRequest += " and " + cstSqlResourceName + "= '" + mName + "'";
+                    sqlRequest.append( " and " + cstSqlResourceName + "= '" + mName + "'");
                 }
                 if (mDomainName == null) {
                     // protect the domain
-                    sqlRequest += " and " + cstSqldomainName + " is null";
+                    sqlRequest.append( " and " + cstSqldomainName + " is null");
                 } else {
-                    sqlRequest += " and " + cstSqldomainName + "= '" + mDomainName + "'";
+                    sqlRequest.append( " and " + cstSqldomainName + "= '" + mDomainName + "'");
                 }
-                String baseRequest = sqlRequest;
+                String baseRequest = sqlRequest.toString();
 
                 // be smart : does not delete the stream, only on change.
-                sqlRequest += " and " + cstSqlPropertiesStream + " is null";
+                sqlRequest.append( " and " + cstSqlPropertiesStream + " is null");
 
                 if (listLimitedKeys != null) {
-                    String filter = "";
+                    StringBuilder filter = new StringBuilder();
                     for (String key : listLimitedKeys) {
                         if (filter.length() > 0)
-                            filter += " or ";
-                        filter += cstSqlPropertiesKey + " = '" + key + "' or " + cstSqlPropertiesKey + " like '" + key + cstMarkerSplitTooLargeKey + "%'";
+                            filter.append( " or ");
+                        filter.append( cstSqlPropertiesKey + " = '" + key + "' or " + cstSqlPropertiesKey + " like '" + key + cstMarkerSplitTooLargeKey + "%'");
 
                     }
-                    sqlRequest += " and (" + filter + ")";
+                    sqlRequest.append( " and (" + filter + ")");
                 }
                 /*
                  * boolean checkToDelete=false;
@@ -546,20 +539,23 @@ public class BonitaProperties extends Properties {
                 // now, purge all Stream marked
                 stmt = con.createStatement();
 
-                logger.log(logLevel, loggerLabel + "Purge with [" + sqlRequest + "]");
-                stmt.executeUpdate(sqlRequest);
+                logger.log(logLevel, loggerLabel + "Purge with [" + sqlRequest.toString() + "]");
+                stmt.executeUpdate(sqlRequest.toString());
 
                 // now purge all stream marked
-                sqlRequest = baseRequest + " and " + cstSqlPropertiesKey + " in (";
-                String listKeysStream = "";
+                sqlRequest = new StringBuilder();
+                sqlRequest.append( baseRequest + " and " + cstSqlPropertiesKey + " in (");
+                StringBuilder listKeysStream = new StringBuilder();
+                int i=0;
                 for (String key : mMarkPropertiesStreamToUpdate) {
-                    listKeysStream += ", '" + key + "' ";
+                    if (i>0)
+                        listKeysStream.append( "," );
+                    listKeysStream.append( " '" + key + "' ");
                 }
                 if (listKeysStream.length() > 0) {
-                    listKeysStream = listKeysStream.substring(1);
-                    sqlRequest += listKeysStream + ")";
-                    logger.log(logLevel, loggerLabel + "Purge Stream with [" + sqlRequest + "]");
-                    stmt.executeUpdate(sqlRequest);
+                    sqlRequest.append( listKeysStream.toString() + ")");
+                    logger.log(logLevel, loggerLabel + "Purge Stream with [" + sqlRequest.toString() + "]");
+                    stmt.executeUpdate(sqlRequest.toString());
                 }
 
                 // now create all records
@@ -569,18 +565,18 @@ public class BonitaProperties extends Properties {
                     exceptionDuringRecord = insertSql(con, mName, mDomainName, null, null, this, listLimitedKeys);
                     if (exceptionDuringRecord != null)
                         listEvents.add(
-                                new BEvent(EventErrorAtStore, exceptionDuringRecord, "properties name;[" + mName + "]"));
+                                new BEvent(eventErrorAtStore, exceptionDuringRecord, "properties name;[" + mName + "]"));
 
                     exceptionDuringRecord = insertSql(con, mName, mDomainName, mPropertiesStream, mMarkPropertiesStreamToUpdate, null, listLimitedKeys);
                     if (exceptionDuringRecord != null)
                         listEvents.add(
-                                new BEvent(EventErrorAtStore, exceptionDuringRecord, "properties name;[" + mName + "]"));
+                                new BEvent(eventErrorAtStore, exceptionDuringRecord, "properties name;[" + mName + "]"));
 
                 } else {
                     for (final String resourceName : mAllProperties.keySet()) {
                         exceptionDuringRecord = insertSql(con, resourceName, mDomainName, null, null, mAllProperties.get(resourceName), listLimitedKeys);
                         if (exceptionDuringRecord != null) {
-                            listEvents.add(new BEvent(EventErrorAtStore, exceptionDuringRecord,
+                            listEvents.add(new BEvent(eventErrorAtStore, exceptionDuringRecord,
                                     "properties name;[" + mName + "]"));
                             break;
                         }
@@ -605,7 +601,7 @@ public class BonitaProperties extends Properties {
                 logger.severe("Error during store properties [" + mName + "] sqlRequest[" + sqlRequest + "] : "
                         + e.toString() + " : " + exceptionDetails);
 
-                listEvents.add(new BEvent(EventErrorAtStore, e, "properties name;[" + mName + "]"));
+                listEvents.add(new BEvent(eventErrorAtStore, e, "properties name;[" + mName + "]"));
 
             } finally {
                 if (stmt != null) {
@@ -733,7 +729,7 @@ public class BonitaProperties extends Properties {
      */
     public List<BEvent> checkDatabase() {
 
-        List<BEvent> listEvents = new ArrayList<BEvent>();
+        List<BEvent> listEvents = new ArrayList<>();
         Connection con = null;
         try {
             final DataSource dataSource = getDataSourceConnection();
@@ -748,7 +744,7 @@ public class BonitaProperties extends Properties {
             final String exceptionDetails = sw.toString();
             logger.severe("Error during checkCreateDatase [" + exceptionDetails + "]");
 
-            listEvents.add(new BEvent(EventErrorAtStore, e, "properties name;[" + mName + "]"));
+            listEvents.add(new BEvent(eventErrorAtStore, e, "properties name;[" + mName + "]"));
         } finally {
             if (con != null) {
                 try {
@@ -1028,7 +1024,7 @@ public class BonitaProperties extends Properties {
 
             logAnalysis += " ERROR during checkCreateDatase properties [" + mName + "] : "
                     + e.toString() + " : " + exceptionDetails;
-            listEvents.add(new BEvent(EventCreationDatabase, e, "properties name;[" + mName + "]"));
+            listEvents.add(new BEvent(eventCreationDatabase, e, "properties name;[" + mName + "]"));
 
         }
         String createIndex = "CREATE INDEX KEYS_INDEX ON " + cstSqlTableName + "(" + cstSqlTenantId + "," + cstSqlResourceName + "," + cstSqldomainName + "," + cstSqlPropertiesKey + ")";
@@ -1221,11 +1217,11 @@ public class BonitaProperties extends Properties {
         // logger.fine(loggerLabel+".getDataSourceConnection() start");
 
         String msg = "";
-        List<String> listDatasourceToCheck = new ArrayList<String>();
+        List<String> listDatasourceToCheck = new ArrayList<>();
         if (sqlDataSourceName != null && sqlDataSourceName.trim().length() > 0)
             listDatasourceToCheck.add(sqlDataSourceName);
-        for (String dataSourceString : listDataSources)
-            listDatasourceToCheck.add(dataSourceString);
+
+        listDatasourceToCheck.addAll(Arrays.asList(BonitaEngineConnection.listDataSources));
 
         for (String dataSourceString : listDatasourceToCheck) {
             // logger.fine(loggerLabel+".getDataSourceConnection() check["+dataSourceString+"]");
