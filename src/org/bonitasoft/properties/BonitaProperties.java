@@ -264,9 +264,11 @@ public class BonitaProperties extends Properties {
             }
 
             // if the collectTooLargeKey is not empty, recompose the key
-            final List<ItemKeyValue> recomposeKey = recomposeTooLargekey(collectTooLargeKey);
-            for (final ItemKeyValue itemKeyValue : recomposeKey) {
-                dispatchKeyAtLoading(itemKeyValue);
+            if (! collectTooLargeKey.isEmpty()) {
+                final List<ItemKeyValue> recomposeKey = recomposeTooLargekey(collectTooLargeKey);
+                for (final ItemKeyValue itemKeyValue : recomposeKey) {
+                    dispatchKeyAtLoading(itemKeyValue);
+                }
             }
             logger.log(logLevel, loggerLabel + ".Loadfrom  [" + mDomainName
                     + "] CheckDatabase[" + originCheckDatabaseAtFirstAccess
@@ -405,7 +407,7 @@ public class BonitaProperties extends Properties {
             }
             Hashtable<String, Object> mapName = mAllProperties.get(itemKeyValue.rsResourceName);
             if (mapName == null) {
-                mapName = new Hashtable<String, Object>();
+                mapName = new Hashtable<>();
                 mAllProperties.put(itemKeyValue.rsResourceName, mapName);
             }
             if (itemKeyValue.rsDomainName != null) {
@@ -710,7 +712,7 @@ public class BonitaProperties extends Properties {
     private Integer getLock(String name) {
         Integer lock = lockOnDomain.get(name);
         if (lock == null) {
-            lock = new Integer(0);
+            lock = Integer.valueOf(0);
             lockOnDomain.put(name, lock);
         }
         return lock;
@@ -779,7 +781,7 @@ public class BonitaProperties extends Properties {
          * + ") VALUES('" + resourceName + "','" + domainName + "','" + key + "','" + value + "')";
          */
         //------------- prepare the data
-        List<ItemKeyValue> listItems = new ArrayList<ItemKeyValue>();
+        List<ItemKeyValue> listItems = new ArrayList<>();
         if (property != null) {
 
             for (final Object key : property.keySet()) {
@@ -1142,25 +1144,25 @@ public class BonitaProperties extends Properties {
         });
 
         // Now, complete
-        String analyse = "";
+        StringBuilder analyse = new StringBuilder();
         ItemKeyValue lastKeyValue = null;
         final List<ItemKeyValue> collapseTooLargeKey = new ArrayList<>();
         for (final ItemKeyValue itemKeyValue : collectTooLargeKey) {
             // a new key ?
             if (lastKeyValue == null || !lastKeyValue.baseKey.equals(itemKeyValue.baseKey)) {
                 if (analyse.length() > 0)
-                    logger.log(logLevel, "BonitaPropertiesMerge=" + analyse);
-                analyse = itemKeyValue.baseKey + "=[" + itemKeyValue.rsValue + "],";
+                    logger.log(logLevel, "BonitaPropertiesMerge=" + analyse.toString());
+                analyse.append( itemKeyValue.baseKey + "=[" + itemKeyValue.rsValue + "],");
                 lastKeyValue = itemKeyValue;
                 lastKeyValue.rsKey = lastKeyValue.baseKey;
                 collapseTooLargeKey.add(lastKeyValue);
             } else {
                 if (lastKeyValue.numKey == itemKeyValue.numKey) {
                     // key are duplicated.... ignore this one
-                    analyse += "!! Duplicate " + itemKeyValue.numKey + " !! ";
+                    analyse.append( "!! Duplicate " + itemKeyValue.numKey + " !! ");
                 } else {
                     lastKeyValue.rsValue += itemKeyValue.rsValue;
-                    analyse += "[" + itemKeyValue.rsValue + "],";
+                    analyse.append( "[" + itemKeyValue.rsValue + "],");
                 }
                 lastKeyValue.numKey = itemKeyValue.numKey;
             }
@@ -1192,7 +1194,8 @@ public class BonitaProperties extends Properties {
                     newCollectTooLargeKey.add(streamKeyValue);
                 } else {
                     // decompose in multiple key
-                    String analyse = "Orig[" + value + "], result=";
+                    StringBuilder analyse = new StringBuilder();
+                    analyse.append( "Orig[" + value + "], result="); 
                     int count = 0;
                     while (value.length() > 0) {
                         final ItemKeyValue partialKeyValue = ItemKeyValue.getInstance(itemKeyValue);
@@ -1204,7 +1207,7 @@ public class BonitaProperties extends Properties {
                         value = value.length() > cstSqlPropertiesValueLength - 1
                                 ? value.substring(cstSqlPropertiesValueLength - 1) : "";
                         count++;
-                        analyse += partialKeyValue.rsKey + "=[" + partialKeyValue.rsValue + "],";
+                        analyse.append(partialKeyValue.rsKey + "=[" + partialKeyValue.rsValue + "],");
                     }
                     logger.log(logLevel, "BonitaPropertiesSplit=" + analyse);
                 }
