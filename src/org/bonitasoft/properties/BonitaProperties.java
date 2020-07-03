@@ -488,43 +488,49 @@ public class BonitaProperties extends Properties {
 
             logger.log(logLevel, loggerLabel + "storeCollectionKeys()");
 
-            Statement stmt = null;
+            PreparedStatement pstmt = null;
             StringBuilder sqlRequest = new StringBuilder();
             Connection con = null;
+
             try {
                 final DataSource dataSource = getDataSourceConnection();
                 if (dataSource == null)
                     throw new Exception("No datasource available");
 
                 // attention: if there are still in the propertiesStream some Blob read from the database, it's important to REPLACE them now by a different inputStream, else the read/write will failed
-
+                // this is a Datasource, so it's super important to close correctly all resources, then to release the connection 
                 con = dataSource.getConnection();
-
+                List<Object> listStatementParameters= new ArrayList<>();
                 sqlRequest.append( "delete from " + cstSqlTableName + " where  " + cstSqlTenantId + "= "
                         + (mTenantId == null ? 1 : mTenantId));
                 if (mName != null) {
-                    sqlRequest.append( " and " + cstSqlResourceName + "= '" + mName + "'");
+                    sqlRequest.append( " and " + cstSqlResourceName + "= ?");
+                    listStatementParameters.add( mName );
                 }
                 if (mDomainName == null) {
                     // protect the domain
                     sqlRequest.append( " and " + cstSqldomainName + " is null");
                 } else {
-                    sqlRequest.append( " and " + cstSqldomainName + "= '" + mDomainName + "'");
+                    sqlRequest.append( " and " + cstSqldomainName + "= ?");
+                    listStatementParameters.add( mDomainName );
                 }
                 String baseRequest = sqlRequest.toString();
 
                 // be smart : does not delete the stream, only on change.
-                sqlRequest.append( " and " + cstSqlPropertiesStream + " is null");
-
-                if (listLimitedKeys != null) {
+                if (listLimitedKeys == null) {
+                    sqlRequest.append( " and " + cstSqlPropertiesStream + " is null");
+                } else  {
+                    // Specifically purge this key. Note: with the "setBigPolicyString", the key may be save as a String change to a Stream at any time, so 
+                    // it's important here to purge the key requested
                     StringBuilder filter = new StringBuilder();
                     for (String key : listLimitedKeys) {
                         if (filter.length() > 0)
                             filter.append( " or ");
-                        filter.append( cstSqlPropertiesKey + " = '" + key + "' or " + cstSqlPropertiesKey + " like '" + key + cstMarkerSplitTooLargeKey + "%'");
-
+                        filter.append( cstSqlPropertiesKey + " = ? or " + cstSqlPropertiesKey + " like ?");
+                        listStatementParameters.add( key );
+                        listStatementParameters.add(  key + cstMarkerSplitTooLargeKey + "%" );
                     }
-                    sqlRequest.append( " and (" + filter + ")");
+                    sqlRequest.append( " and ("+ filter +")");
                 }
                 /*
                  * boolean checkToDelete=false;
@@ -539,25 +545,39 @@ public class BonitaProperties extends Properties {
                  */
 
                 // now, purge all Stream marked
-                stmt = con.createStatement();
-
-                logger.log(logLevel, loggerLabel + "Purge with [" + sqlRequest.toString() + "]");
-                stmt.executeUpdate(sqlRequest.toString());
-
+                pstmt = con.prepareStatement(sqlRequest.toString());
+                for (int i=0;i<listStatementParameters.size();i++)
+                    pstmt.setObject(i+1, listStatementParameters.get( i ));
+                
+                logger.log(logLevel, loggerLabel + "Purge with [" + sqlRequest.toString() + "] Parameters: "+listStatementParameters.toString());
+                pstmt.executeUpdate();
+                pstmt.close();
+                pstmt=null;
+                
                 // now purge all stream marked
                 sqlRequest = new StringBuilder();
+                listStatementParameters.clear();
                 sqlRequest.append( baseRequest + " and " + cstSqlPropertiesKey + " in (");
                 StringBuilder listKeysStream = new StringBuilder();
                 int i=0;
                 for (String key : mMarkPropertiesStreamToUpdate) {
                     if (i>0)
                         listKeysStream.append( "," );
-                    listKeysStream.append( " '" + key + "' ");
+                    i++;
+                    listKeysStream.append( "?");
+                    listStatementParameters.add( key );
+
                 }
                 if (listKeysStream.length() > 0) {
                     sqlRequest.append( listKeysStream.toString() + ")");
                     logger.log(logLevel, loggerLabel + "Purge Stream with [" + sqlRequest.toString() + "]");
-                    stmt.executeUpdate(sqlRequest.toString());
+               
+                    pstmt = con.prepareStatement(sqlRequest.toString());
+                    for (i=0;i<listStatementParameters.size();i++)
+                        pstmt.setObject(i+1, listStatementParameters.get( i ));
+                    pstmt.executeUpdate(sqlRequest.toString());
+                    pstmt.close();
+                    pstmt=null;
                 }
 
                 // now create all records
@@ -606,10 +626,10 @@ public class BonitaProperties extends Properties {
                 listEvents.add(new BEvent(eventErrorAtStore, e, "properties name;[" + mName + "]"));
 
             } finally {
-                if (stmt != null) {
+                if (pstmt != null) {
                     try {
-                        stmt.close();
-                        stmt = null;
+                        pstmt.close();
+                        
                     } catch (final SQLException e1) {
                     }
                 }
