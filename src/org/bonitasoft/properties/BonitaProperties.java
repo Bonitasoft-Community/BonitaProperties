@@ -98,7 +98,7 @@ public class BonitaProperties extends Properties {
      * }
      */
     /** use hastable to be thread safe */
-    private Hashtable<String, Hashtable<String, Object>> mAllProperties;
+    private Hashtable<String, Hashtable<String, Object>> mAllProperties = new Hashtable<String, Hashtable<String, Object>>();
 
     private Hashtable<String, InputStream> mPropertiesStream = new Hashtable<>();
     /**
