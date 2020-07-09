@@ -515,7 +515,8 @@ public class BonitaProperties extends Properties {
                     listStatementParameters.add( mDomainName );
                 }
                 String baseRequest = sqlRequest.toString();
-
+                List<Object> baseParameters= new ArrayList<Object>(listStatementParameters);
+                
                 // be smart : does not delete the stream, only on change.
                 if (listLimitedKeys == null) {
                     sqlRequest.append( " and " + cstSqlPropertiesStream + " is null");
@@ -554,10 +555,12 @@ public class BonitaProperties extends Properties {
                 pstmt.close();
                 pstmt=null;
                 
-                // now purge all stream marked
+                // now purge all stream marked - get back the baseRequest + baseParameters
                 sqlRequest = new StringBuilder();
                 listStatementParameters.clear();
                 sqlRequest.append( baseRequest + " and " + cstSqlPropertiesKey + " in (");
+                listStatementParameters = new ArrayList<Object>( baseParameters );
+                
                 StringBuilder listKeysStream = new StringBuilder();
                 int i=0;
                 for (String key : mMarkPropertiesStreamToUpdate) {
@@ -575,7 +578,7 @@ public class BonitaProperties extends Properties {
                     pstmt = con.prepareStatement(sqlRequest.toString());
                     for (i=0;i<listStatementParameters.size();i++)
                         pstmt.setObject(i+1, listStatementParameters.get( i ));
-                    pstmt.executeUpdate(sqlRequest.toString());
+                    pstmt.executeUpdate();
                     pstmt.close();
                     pstmt=null;
                 }
