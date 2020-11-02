@@ -1,5 +1,7 @@
 package org.bonitasoft.properties;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -14,8 +16,10 @@ import java.util.logging.Logger;
 
 import javax.naming.Context;
 import javax.naming.InitialContext;
+import javax.naming.NameNotFoundException;
 import javax.naming.NamingException;
-import javax.sql.DataSource;
+
+import org.bonitasoft.log.event.BEventFactory;
 
 /* -------------------------------------------------------------------- */
 /*                                                                      */
@@ -26,7 +30,7 @@ import javax.sql.DataSource;
 public class BonitaEngineConnection {
 
     private final static Logger logger = Logger.getLogger(BonitaEngineConnection.class.getName());
-    private static final String loggerLabel = "BonitaProperties_2.3.0:";
+    private static final String loggerLabel = "BonitaProperties_2.8.0:";
 
     /*
      * private String[] listDataSources = new String[] { "java:/comp/env/bonitaSequenceManagerDS", // tomcat
@@ -34,10 +38,13 @@ public class BonitaEngineConnection {
      */
 
     // the datasource "java:/comp/env/bonitaDS", can't be used : it's under the control of Bitronix which not allow request.
-    protected final static String[] listDataSources = new String[] { 
+    protected final static List<String> listDataSources = Arrays.asList(
             "java:/comp/env/RawBonitaDS", // 7.
             "java:/comp/env/bonitaSequenceManagerDS", // tomcat
-            "java:jboss/datasources/bonitaSequenceManagerDS" }; // jboss
+            "java:jboss/datasources/bonitaSequenceManagerDS"); // jboss
+    protected final static List<String> listBusinessDataSources = Arrays.asList(
+            "java:/comp/env/NotManagedBizDataDS",
+            "java:jboss/datasources/NotManagedBizDataDS");
 
     /**
      * execute a request
@@ -83,26 +90,27 @@ public class BonitaEngineConnection {
     public static Connection getConnection() throws SQLException {
         // logger.info(loggerLabel+".getDataSourceConnection() start");
 
-        String msg = "";
-        List<String> listDatasourceToCheck = new ArrayList<String>();
-        for (String dataSourceString : listDataSources)
-            listDatasourceToCheck.add(dataSourceString);
-
-        for (String dataSourceString : listDatasourceToCheck) {
-            // logger.info(loggerLabel + ".getDataSourceConnection() check[" + dataSourceString + "]");
-            try {
-                final Context ctx = new InitialContext();
-                final DataSource dataSource = (DataSource) ctx.lookup(dataSourceString);
-                // logger.info(loggerLabel + ".getDataSourceConnection() [" + dataSourceString + "] isOk");
-                return dataSource.getConnection();
-
-            } catch (NamingException e) {
-                logger.info(loggerLabel + ".getDataSourceConnection() error[" + dataSourceString + "] : " + e.toString());
-                msg += "DataSource[" + dataSourceString + "] : error " + e.toString() + ";";
-            }
-        }
-        logger.severe(loggerLabel + ".getDataSourceConnection: Can't found a datasource : " + msg);
+        DatabaseConnection.ConnectionResult connectionResult = DatabaseConnection.getConnection(listDataSources);
+        if (connectionResult.con != null)
+            return connectionResult.con;
+        // already logged logger.severe(loggerLabel + ".getDataSourceConnection: Can't found a datasource : " +BEventFactory.getSyntheticLog(connectionResult.listEvents));
         return null;
     }
 
+    /**
+     * get the BusinessConnection
+     * 
+     * @return
+     * @throws SQLException
+     */
+    public static Connection getBusinessConnection() throws SQLException {
+        // logger.info(loggerLabel+".getDataSourceConnection() start");
+
+        DatabaseConnection.ConnectionResult connectionResult = DatabaseConnection.getConnection(listBusinessDataSources);
+        if (connectionResult.con != null)
+            return connectionResult.con;
+
+        // Everything is already logged logger.severe(loggerLabel + ".getBusinessDataSourceConnection: Can't found a datasource : " + msg.toString());
+        return null;
+    }
 }
