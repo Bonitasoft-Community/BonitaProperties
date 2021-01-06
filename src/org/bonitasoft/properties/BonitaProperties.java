@@ -39,7 +39,7 @@ import org.bonitasoft.web.extension.page.PageResourceProvider;
 public class BonitaProperties extends Properties {
 
      private static Logger logger = Logger.getLogger(BonitaProperties.class.getName());
-    private final String loggerLabel = "BonitaProperties_2.6.1:";
+    private final static String LOGGER_LABEL = "BonitaProperties:";
 
     protected static BEvent eventErrorAtLoad = new BEvent(BonitaProperties.class.getName(), 1, Level.ERROR,
             "Error during loading properties", "Check Exception ",
@@ -197,24 +197,27 @@ public class BonitaProperties extends Properties {
         final boolean originCheckDatabaseAtFirstAccess = checkDatabaseAtFirstAccess;
         PreparedStatement pstmt = null;
         ResultSet rs = null;
+        String sqlRequest = "select * from bonitaproperties where (" + cstSqlTenantId + "= "
+                + (mTenantId == null ? (" 1 or " + cstSqlTenantId + " is null") : mTenantId);
+        final List<Object> listSqlParameters = new ArrayList<>();
 
         try {
-            con = BonitaEngineConnection.getConnection();
             if (checkDatabaseAtFirstAccess) {
+                con = BonitaEngineConnection.getConnection();
                 DatabaseOperation databaseOperation = new DatabaseOperation( this );
                 listEvents.addAll( databaseOperation.checkCreateDatase(con));
+                con.close();
             }
+            // create a second transaction now
+            con = BonitaEngineConnection.getConnection();
             checkDatabaseAtFirstAccess = false;
             if (BEventFactory.isError(listEvents)) {
                 return listEvents;
             }
-            String sqlRequest = "select * from bonitaproperties where (" + cstSqlTenantId + "= "
-                    + (mTenantId == null ? (" 1 or " + cstSqlTenantId + " is null") : mTenantId);
             // be compatible with 1.3 or lower which continue to read / write in this table : the tenantId will be null then at each write
             // so if an application using 1.3 move to 1.4, it must continue to read the data
             sqlRequest += ")";
 
-            final List<Object> listSqlParameters = new ArrayList<>();
             if (mName != null) {
                 sqlRequest = sqlRequest + " and resourcename= ?";
                 listSqlParameters.add(mName);
@@ -229,7 +232,7 @@ public class BonitaProperties extends Properties {
                 }
             }
 
-            logger.log(logLevel, "sqlRequest[" + sqlRequest + "]");
+            logger.log(logLevel, "sqlRequest[" + sqlRequest + "] sqlParam: "+listSqlParameters);
             mPropertiesStream = new Hashtable<>();
             mMarkPropertiesStreamToUpdate = new HashSet<>();
 
@@ -237,8 +240,9 @@ public class BonitaProperties extends Properties {
             for (int i = 0; i < listSqlParameters.size(); i++) {
                 pstmt.setObject(i + 1, listSqlParameters.get(i));
             }
-            final List<ItemKeyValue> collectTooLargeKey = new ArrayList<ItemKeyValue>();
+            final List<ItemKeyValue> collectTooLargeKey = new ArrayList<>();
             int count = 0;
+            
             rs = pstmt.executeQuery();
             while (rs.next()) {
                 count++;
@@ -261,7 +265,7 @@ public class BonitaProperties extends Properties {
                     dispatchKeyAtLoading(itemKeyValue);
                 }
             }
-            logger.log(logLevel, loggerLabel + ".Loadfrom  [" + mDomainName
+            logger.log(logLevel, LOGGER_LABEL + ".Loadfrom  [" + mDomainName
                     + "] CheckDatabase[" + originCheckDatabaseAtFirstAccess
                     + "] name[" + mName
                     + "] " + (mName != null ? "*LoadProperties*" : "*LoadALLPROPERTIES*")
@@ -278,7 +282,7 @@ public class BonitaProperties extends Properties {
             final StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             final String exceptionDetails = sw.toString();
-            logger.severe(loggerLabel + ".loadDomainName Error during load properties [" + mName + "] : " + e.toString()
+            logger.severe(LOGGER_LABEL + ".loadDomainName Error during load properties [" + mName + "] SqlRequest["+sqlRequest+"]: param["+listSqlParameters+"] " + e.toString()
                     + " : " + exceptionDetails);
 
             listEvents.add(new BEvent(eventErrorAtLoad, e, "properties name;[" + mName + "]"));
@@ -461,7 +465,7 @@ public class BonitaProperties extends Properties {
      * load() has to be done
      */
     public List<BEvent> store() {
-        logger.log(logLevel, loggerLabel + "store()");
+        logger.log(logLevel, LOGGER_LABEL + "store()");
 
         return storeCollectionKeys(null);
     }
@@ -477,7 +481,7 @@ public class BonitaProperties extends Properties {
         final List<BEvent> listEvents = new ArrayList<>();
         synchronized (lock) {
 
-            logger.log(logLevel, loggerLabel + "storeCollectionKeys()");
+            logger.log(logLevel, LOGGER_LABEL + "storeCollectionKeys()");
 
             PreparedStatement pstmt = null;
             StringBuilder sqlRequest = new StringBuilder();
@@ -528,7 +532,7 @@ public class BonitaProperties extends Properties {
                  * {
                  * for(String key : listLimitedKeys)
                  * if (this.get( key ) ==null)
-                 * logger.info(loggerLabel+"We delete the key "+key);
+                 * logger.info(LOGGER_LABEL+"We delete the key "+key);
                  * }
                  */
 
@@ -537,7 +541,7 @@ public class BonitaProperties extends Properties {
                 for (int i=0;i<listStatementParameters.size();i++)
                     pstmt.setObject(i+1, listStatementParameters.get( i ));
                 
-                logger.log(logLevel, loggerLabel + "Purge with [" + sqlRequest.toString() + "] Parameters: "+listStatementParameters.toString());
+                logger.log(logLevel, LOGGER_LABEL + "Purge with [" + sqlRequest.toString() + "] Parameters: "+listStatementParameters.toString());
                 pstmt.executeUpdate();
                 pstmt.close();
                 pstmt=null;
@@ -560,7 +564,7 @@ public class BonitaProperties extends Properties {
                 }
                 if (listKeysStream.length() > 0) {
                     sqlRequest.append( listKeysStream.toString() + ")");
-                    logger.log(logLevel, loggerLabel + "Purge Stream with [" + sqlRequest.toString() + "]");
+                    logger.log(logLevel, LOGGER_LABEL + "Purge Stream with [" + sqlRequest.toString() + "]");
                
                     pstmt = con.prepareStatement(sqlRequest.toString());
                     for (i=0;i<listStatementParameters.size();i++)
@@ -596,10 +600,10 @@ public class BonitaProperties extends Properties {
                 }
                 // maybe the database are in autocommit mode ? In that situation, do not commit
                 if (con.getAutoCommit()) {
-                    logger.log(logLevel, loggerLabel + " Database are in Autocommit");
+                    logger.log(logLevel, LOGGER_LABEL + " Database are in Autocommit");
                 } else {
                     if (exceptionDuringRecord != null) {
-                        logger.log(logLevel, loggerLabel + " Rollback");
+                        logger.log(logLevel, LOGGER_LABEL + " Rollback");
                         con.rollback();
                     } else {
                         con.commit();
@@ -679,14 +683,14 @@ public class BonitaProperties extends Properties {
     /*                                                                                  */
     /* ******************************************************************************** */
     public void traceInLog() {
-        logger.log(logLevel, loggerLabel + "trace()");
+        logger.log(logLevel, LOGGER_LABEL + "trace()");
         if (mAllProperties != null)
             for (String domaineName : mAllProperties.keySet()) {
                 Map<String, Object> subProperties = mAllProperties.get(domaineName);
                 for (String key : mAllProperties.keySet()) {
                     Object value = subProperties.get(key);
 
-                    logger.log(logLevel, loggerLabel + " allProperties[" + domaineName + "] .key(" + key + ") value=["
+                    logger.log(logLevel, LOGGER_LABEL + " allProperties[" + domaineName + "] .key(" + key + ") value=["
                             + (value == null ? null : (value.toString().length() > 10
                                     ? value.toString().substring(0, 10) + "..." : value))
                             + "]");
@@ -695,7 +699,7 @@ public class BonitaProperties extends Properties {
 
         for (Object key : this.keySet()) {
             String value = this.getProperty(key.toString());
-            logger.log(logLevel, loggerLabel + " key(" + key + ") value=["
+            logger.log(logLevel, LOGGER_LABEL + " key(" + key + ") value=["
                     + (value == null ? null
                             : (value.toString().length() > 10 ? value.toString().substring(0, 10) + "..." : value))
                     + "]");
@@ -841,9 +845,9 @@ public class BonitaProperties extends Properties {
                     pstmt.setBinaryStream(index++, itemKeyValue.rsStream);
                 try {
                     pstmt.executeUpdate();
-                    logger.log(logLevel, loggerLabel + "Insert " + whatToLog);
+                    logger.log(logLevel, LOGGER_LABEL + "Insert " + whatToLog);
                 } catch (Exception e) {
-                    logger.log(logLevel, loggerLabel + "UNIQUE INDEX VIOLATION : Insert " + whatToLog);
+                    logger.log(logLevel, LOGGER_LABEL + "UNIQUE INDEX VIOLATION : Insert " + whatToLog);
                     if (e.getMessage().startsWith("Unique index"))
                         continue;
                     throw e;
@@ -948,7 +952,7 @@ public class BonitaProperties extends Properties {
             if (itemKeyValue.rsValue == null || itemKeyValue.rsValue.length() < cstSqlPropertiesValueLength) {
                 newCollectTooLargeKey.add(itemKeyValue);
             } else {
-                logger.log(logLevel, loggerLabel + "decomposeTooLargeKey[" + itemKeyValue.rsKey + "] : size=["
+                logger.log(logLevel, LOGGER_LABEL + "decomposeTooLargeKey[" + itemKeyValue.rsKey + "] : size=["
                         + itemKeyValue.rsValue.length() + "]");
                 // too large : create multiple value
                 String value = itemKeyValue.rsValue;

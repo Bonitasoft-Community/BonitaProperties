@@ -24,7 +24,7 @@ import org.bonitasoft.log.event.BEvent;
 
 public class DatabaseOperation {
     private static Logger logger = Logger.getLogger(DatabaseOperation.class.getName());
-    private final String loggerLabel = "BonitaProperties_2.6.1:";
+    private static final String LOGGER_LABEL = "BonitaProperties:";
     BonitaProperties bonitaProperties;
     
     private static final String CST_DRIVER_H2 = "H2";
@@ -186,6 +186,21 @@ public class DatabaseOperation {
                  * + cstSqlPropertiesKey+")";
                  * executeAlterSql(con, constraints);
                  */
+                
+                // create the index only when table is created
+                String createIndex = "CREATE INDEX KEYS_INDEX ON " + BonitaProperties.cstSqlTableName + "(" + BonitaProperties.cstSqlTenantId + "," + BonitaProperties.cstSqlResourceName + "," + BonitaProperties.cstSqldomainName + "," + BonitaProperties.cstSqlPropertiesKey + ")";
+                try {
+                    executeAlterSql(con, createIndex);
+                } catch (SQLException e) {
+                    // Do not report this failure at this moment
+                    // final StringWriter sw = new StringWriter();
+                    // e.printStackTrace(new PrintWriter(sw));
+                    // final String exceptionDetails = sw.toString();
+                    // logLevelAnalysis = java.util.logging.Level.FINE;
+
+
+                    // logAnalysis += " ERROR during checkCreateDatase properties [" + mName + "] : "+ e.toString() + " : " + exceptionDetails;
+                }
 
             }
         } catch (final SQLException e) {
@@ -199,26 +214,13 @@ public class DatabaseOperation {
             listEvents.add(new BEvent(BonitaProperties.eventCreationDatabase, e, "properties name;[" + bonitaProperties.mName + "]"));
 
         }
-        String createIndex = "CREATE INDEX KEYS_INDEX ON " + BonitaProperties.cstSqlTableName + "(" + BonitaProperties.cstSqlTenantId + "," + BonitaProperties.cstSqlResourceName + "," + BonitaProperties.cstSqldomainName + "," + BonitaProperties.cstSqlPropertiesKey + ")";
-        try {
-            executeAlterSql(con, createIndex);
-        } catch (SQLException e) {
-            // Do not report this failure at this moment
-            // final StringWriter sw = new StringWriter();
-            // e.printStackTrace(new PrintWriter(sw));
-            // final String exceptionDetails = sw.toString();
-            // logLevelAnalysis = java.util.logging.Level.FINE;
-
-
-            // logAnalysis += " ERROR during checkCreateDatase properties [" + mName + "] : "+ e.toString() + " : " + exceptionDetails;
-        }
 
         logger.log(logLevelAnalysis, logAnalysis.toString());
         return listEvents;
     }
 
     private void executeAlterSql(final Connection con, final String sqlRequest) throws SQLException {
-        logger.log(bonitaProperties.logLevel, loggerLabel + "executeAlterSql : Execute [" + sqlRequest + "]");
+        logger.log(bonitaProperties.logLevel, LOGGER_LABEL + "executeAlterSql : Execute [" + sqlRequest + "]");
 
         try ( Statement stmt = con.createStatement() ) {
             stmt.executeUpdate(sqlRequest);
