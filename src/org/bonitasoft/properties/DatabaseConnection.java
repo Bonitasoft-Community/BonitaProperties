@@ -71,7 +71,10 @@ public class DatabaseConnection {
                 return connectionResult;
             } catch (NameNotFoundException e) {
                 // nothing to do, expected
-            } catch (NamingException | NoSuchMethodException | SecurityException | IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+            } catch( InvocationTargetException e) {
+                connectionResult.listEvents.add(new BEvent(eventConnectDatabase, "Datasource[" + dataSourceIterator + "] Error:" + ((InvocationTargetException)e).getTargetException().getMessage()));
+                
+            } catch (NamingException | NoSuchMethodException | SecurityException | IllegalAccessException | IllegalArgumentException e) {
                 connectionResult.listEvents.add(new BEvent(eventConnectDatabase, "Datasource[" + dataSourceIterator + "] Error:" + e.getMessage()));
             }
         }
